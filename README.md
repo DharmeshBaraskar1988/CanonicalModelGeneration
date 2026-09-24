@@ -8,12 +8,18 @@ This project will discover the structure and behavior of regional insurance APIs
 - [Current status](docs/STATUS.md)
 - [Next steps](docs/NEXT_STEPS.md)
 - [Architecture decisions](docs/DECISIONS.md)
+- [Installation and user guide](docs/USER_GUIDE.md)
 
-The current release is the deterministic Discovery MVP. A synthetic regional Quote API and OpenAPI input are available under [`fixtures/RegionalQuoteApi`](fixtures/RegionalQuoteApi). The Python intake scaffold exists; the discovery services and .NET analyzer test project are still pending.
+Phase 1 deterministic discovery is complete and Phase 2 API analysis is in progress. A
+synthetic regional Quote API and OpenAPI input are available under
+[`fixtures/RegionalQuoteApi`](fixtures/RegionalQuoteApi). See the
+[user guide](docs/USER_GUIDE.md) for complete installation, .NET dependency, UI, CLI,
+configuration, verification, and troubleshooting instructions.
 
-## Discovery intake UI
+## Quick start
 
-The Streamlit page safely inspects an uploaded repository ZIP and optional OpenAPI document, then produces a deterministic intake manifest. It does not yet run the Roslyn/OpenAPI discovery pipeline.
+The Streamlit application runs deterministic repository discovery and exposes the Phase 2
+API Analyzer Agent after a successful Phase 1 run.
 
 ```powershell
 python -m venv .venv

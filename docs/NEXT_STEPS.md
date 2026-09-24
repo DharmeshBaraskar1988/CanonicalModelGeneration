@@ -10,6 +10,7 @@ The first unchecked item is the recommended next action.
 - [x] **NS-UI-01 / M0.6:** Add a safe intake-only Streamlit page for repository and OpenAPI upload, inventory preview, and manifest download.
 - [x] **NS-02 / M0.4-M0.5:** Scaffold the Python and .NET projects with empty passing test suites.
 - [x] **NS-03 / M1.1-M1.10:** Implement and fixture-test DiscoveryModel v1 before building either parser.
+- [x] **NS-DOC-01 / M0.7:** Publish the installation and user guide, including .NET SDK and NuGet dependency setup.
 
 ## After the contract is accepted
 

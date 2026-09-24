@@ -46,6 +46,7 @@ Status: Complete
 - [x] **M0.4** Establish Python and .NET project scaffolds.
 - [x] **M0.5** Add baseline lint, format, build, and test commands.
 - [x] **M0.6** Add an intake-only Streamlit page with safe ZIP inspection and deterministic manifest output.
+- [x] **M0.7** Publish an installation and user guide covering Python setup, .NET SDK and NuGet dependency restoration, UI and CLI execution, verification, and troubleshooting.
 
 Acceptance criteria:
 

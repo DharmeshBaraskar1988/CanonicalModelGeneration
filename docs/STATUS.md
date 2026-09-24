@@ -66,6 +66,7 @@ Overall state: Phase 1 complete; Phase 2 in progress
 - Added bounded request-model trees to the API Catalog so request and response structures are both visible there and in the Data Model.
 - Completed P2.4a: enriched OpenAPI now retains deterministic details and source lineage for route/query/header parameters and request bodies, explicitly names response contract models, and supplies structural fallback descriptions for response ViewModels and their fields when semantic enrichment is partial or unavailable.
 - Completed P2.4b: each response `x-response-model` now includes its component reference, model description, and direct attributes with requiredness, descriptions, and schemas; corrected the partial-run entity-description fallback so every discovered response ViewModel is described in `components.schemas`.
+- Published `docs/USER_GUIDE.md` with Windows and cross-platform prerequisites, Python environment setup, .NET 8 SDK and NuGet restoration, Streamlit and CLI usage, optional Phase 2 configuration, verification commands, and troubleshooting; linked it from the README and corrected the README's stale implementation summary.
 
 ## In progress
 
@@ -73,6 +74,8 @@ Overall state: Phase 1 complete; Phase 2 in progress
 - Keep service call paths, persistence, integrations, security, and other unavailable code context visible as Phase 1 gaps rather than LLM facts.
 
 ## Verification evidence
+
+- User-guide commands and dependency descriptions were checked against `pyproject.toml`, both .NET project files, `Directory.Build.props`, the CLI argument contract, and the locally installed .NET SDK; all documented repository-relative paths exist, `dotnet restore CanonicalModelGenerator.sln` succeeded, and `dotnet build CanonicalModelGenerator.sln --no-restore` completed with 0 warnings and 0 errors.
 
 - Before the M7.7 scope amendment, a focused offline Phase 2 run enriched 2 fixture endpoints, 4 broad contract entities, and 14 attributes. Those DTO entity counts are historical and are no longer the accepted Phase 1 boundary.
 - Ruff accepted `streamlit_app.py` and `semantic_openapi.py`; OpenAI Python 3.19.1 is installed in the project environment.
