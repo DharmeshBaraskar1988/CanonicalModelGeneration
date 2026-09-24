@@ -1,0 +1,113 @@
+openapi: 3.0.3
+info:
+  title: India Regional Quote API Fixture
+  version: 1.0.0
+paths:
+  /api/v1/quotes:
+    post:
+      operationId: createQuote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuoteRequest'
+      responses:
+        '201':
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+        '400':
+          description: Invalid request
+  /api/v1/quotes/{quoteId}:
+    get:
+      operationId: getQuote
+      parameters:
+        - name: quoteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Quote found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+        '404':
+          description: Quote not found
+components:
+  schemas:
+    CreateQuoteRequest:
+      type: object
+      required: [applicantName, address, applicantAge, coverageType, coverageAmount, vehicles]
+      properties:
+        applicantName:
+          type: string
+          minLength: 2
+          maxLength: 80
+        address:
+          $ref: '#/components/schemas/Address'
+        applicantAge:
+          type: integer
+          format: int32
+          minimum: 18
+          maximum: 100
+        coverageType:
+          $ref: '#/components/schemas/CoverageType'
+        coverageAmount:
+          type: number
+          format: decimal
+          minimum: 1000
+          maximum: 1000000
+        vehicles:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Vehicle'
+    Address:
+      type: object
+      required: [line1, postalCode]
+      properties:
+        line1:
+          type: string
+          maxLength: 120
+        postalCode:
+          type: string
+          pattern: '^[0-9]{5}$'
+    Vehicle:
+      type: object
+      required: [vin, modelYear]
+      properties:
+        vin:
+          type: string
+          minLength: 17
+          maxLength: 17
+        modelYear:
+          type: integer
+          format: int32
+          minimum: 1980
+          maximum: 2100
+    CoverageType:
+      type: string
+      enum: [Liability, Collision, Comprehensive]
+    QuoteResponse:
+      type: object
+      required: [quoteId, status, premium, validUntil]
+      properties:
+        quoteId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [Draft, Offered, Expired]
+        premium:
+          type: number
+          format: decimal
+        validUntil:
+          type: string
+          format: date-time

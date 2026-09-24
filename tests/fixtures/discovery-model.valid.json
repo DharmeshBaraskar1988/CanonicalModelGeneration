@@ -1,0 +1,28 @@
+{
+  "contractVersion": "1.0",
+  "run": {"id": "run-quote", "status": "complete", "toolVersion": "0.1.0"},
+  "region": "IN",
+  "system": "regional-quote-api-fixture",
+  "sources": [{"id": "source-code", "kind": "roslyn", "path": "QuotesController.cs", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
+  "operations": [{"id": "operation-create", "name": "CreateQuote", "method": "POST", "route": "/api/v1/quotes", "parameters": [], "requestEntityId": "entity-request", "responses": [{"id": "response-created", "statusCode": 201, "entityId": "entity-response"}], "evidenceIds": ["evidence-operation"]}],
+  "entities": [
+    {"id": "entity-request", "name": "CreateQuoteRequest", "originalName": "CreateQuoteRequest", "attributes": [{"id": "attribute-name", "name": "applicantName", "originalName": "ApplicantName", "type": {"kind": "string", "name": "string", "nullable": false, "collection": false}, "required": true, "evidenceIds": ["evidence-name"]}], "evidenceIds": []},
+    {"id": "entity-response", "name": "QuoteResponse", "originalName": "QuoteResponse", "attributes": [], "evidenceIds": []}
+  ],
+  "enums": [],
+  "validations": [],
+  "relationships": [
+    {"id": "relationship-accepts", "kind": "ACCEPTS", "sourceId": "operation-create", "targetId": "entity-request", "evidenceIds": ["evidence-operation"]},
+    {"id": "relationship-returns", "kind": "RETURNS", "sourceId": "operation-create", "targetId": "entity-response", "evidenceIds": ["evidence-operation"]}
+  ],
+  "evidence": [
+    {"id": "evidence-operation", "sourceId": "source-code", "subjectId": "operation-create", "observedValue": {"method": "POST"}},
+    {"id": "evidence-name", "sourceId": "source-code", "subjectId": "attribute-name", "observedValue": "ApplicantName"}
+  ],
+  "lineage": [
+    {"id": "lineage-operation", "sourceId": "source-code", "subjectId": "operation-create", "path": "QuotesController.cs", "startLine": 12, "endLine": 20},
+    {"id": "lineage-name", "sourceId": "source-code", "subjectId": "attribute-name", "path": "CreateQuoteRequest.cs", "startLine": 8, "endLine": 10}
+  ],
+  "diagnostics": [],
+  "summary": {"operationCount": 1, "entityCount": 2, "enumCount": 0, "relationshipCount": 2, "diagnosticCount": 0}
+}

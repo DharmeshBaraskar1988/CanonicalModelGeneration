@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.venv/
+.tmp/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.streamlit/secrets.toml
+.env

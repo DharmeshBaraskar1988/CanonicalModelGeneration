@@ -1,0 +1,605 @@
+{
+  "$defs": {
+    "NormalizationSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnosticCount": {
+          "minimum": 0,
+          "title": "Diagnosticcount",
+          "type": "integer"
+        },
+        "entityCount": {
+          "minimum": 0,
+          "title": "Entitycount",
+          "type": "integer"
+        },
+        "enumCount": {
+          "minimum": 0,
+          "title": "Enumcount",
+          "type": "integer"
+        },
+        "operationCount": {
+          "minimum": 0,
+          "title": "Operationcount",
+          "type": "integer"
+        },
+        "relationshipCount": {
+          "minimum": 0,
+          "title": "Relationshipcount",
+          "type": "integer"
+        },
+        "sourceCount": {
+          "minimum": 1,
+          "title": "Sourcecount",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sourceCount",
+        "operationCount",
+        "entityCount",
+        "enumCount",
+        "relationshipCount",
+        "diagnosticCount"
+      ],
+      "title": "NormalizationSummary",
+      "type": "object"
+    },
+    "NormalizedDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedItems": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affecteditems",
+          "type": "array"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "string"
+        },
+        "supportedBy": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "title": "Supportedby",
+          "type": "array"
+        }
+      },
+      "required": [
+        "severity",
+        "code",
+        "message"
+      ],
+      "title": "NormalizedDiagnostic",
+      "type": "object"
+    },
+    "NormalizedEntity": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/NormalizedField"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "inheritsFrom": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inheritsfrom"
+        },
+        "normalizedName": {
+          "title": "Normalizedname",
+          "type": "string"
+        },
+        "sourceName": {
+          "title": "Sourcename",
+          "type": "string"
+        },
+        "supportedBy": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "title": "Supportedby",
+          "type": "array"
+        }
+      },
+      "required": [
+        "normalizedName",
+        "sourceName"
+      ],
+      "title": "NormalizedEntity",
+      "type": "object"
+    },
+    "NormalizedEnum": {
+      "additionalProperties": false,
+      "properties": {
+        "normalizedName": {
+          "title": "Normalizedname",
+          "type": "string"
+        },
+        "sourceName": {
+          "title": "Sourcename",
+          "type": "string"
+        },
+        "supportedBy": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "title": "Supportedby",
+          "type": "array"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/NormalizedEnumValue"
+          },
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "normalizedName",
+        "sourceName"
+      ],
+      "title": "NormalizedEnum",
+      "type": "object"
+    },
+    "NormalizedEnumValue": {
+      "additionalProperties": false,
+      "properties": {
+        "normalizedName": {
+          "title": "Normalizedname",
+          "type": "string"
+        },
+        "sourceName": {
+          "title": "Sourcename",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "normalizedName",
+        "sourceName",
+        "value"
+      ],
+      "title": "NormalizedEnumValue",
+      "type": "object"
+    },
+    "NormalizedField": {
+      "additionalProperties": false,
+      "properties": {
+        "normalizedName": {
+          "title": "Normalizedname",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "sourceName": {
+          "title": "Sourcename",
+          "type": "string"
+        },
+        "supportedBy": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "title": "Supportedby",
+          "type": "array"
+        },
+        "type": {
+          "$ref": "#/$defs/NormalizedType"
+        },
+        "validations": {
+          "items": {
+            "$ref": "#/$defs/NormalizedRule"
+          },
+          "title": "Validations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "normalizedName",
+        "sourceName",
+        "type",
+        "required"
+      ],
+      "title": "NormalizedField",
+      "type": "object"
+    },
+    "NormalizedOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "normalizedName": {
+          "title": "Normalizedname",
+          "type": "string"
+        },
+        "normalizedRoute": {
+          "title": "Normalizedroute",
+          "type": "string"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/NormalizedParameter"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "requestModel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requestmodel"
+        },
+        "responses": {
+          "items": {
+            "$ref": "#/$defs/NormalizedResponse"
+          },
+          "title": "Responses",
+          "type": "array"
+        },
+        "sourceName": {
+          "title": "Sourcename",
+          "type": "string"
+        },
+        "sourceRoute": {
+          "title": "Sourceroute",
+          "type": "string"
+        },
+        "supportedBy": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "title": "Supportedby",
+          "type": "array"
+        }
+      },
+      "required": [
+        "normalizedName",
+        "sourceName",
+        "method",
+        "normalizedRoute",
+        "sourceRoute"
+      ],
+      "title": "NormalizedOperation",
+      "type": "object"
+    },
+    "NormalizedParameter": {
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "title": "Location",
+          "type": "string"
+        },
+        "normalizedName": {
+          "title": "Normalizedname",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "sourceName": {
+          "title": "Sourcename",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/NormalizedType"
+        }
+      },
+      "required": [
+        "normalizedName",
+        "sourceName",
+        "location",
+        "required",
+        "type"
+      ],
+      "title": "NormalizedParameter",
+      "type": "object"
+    },
+    "NormalizedRelationship": {
+      "additionalProperties": false,
+      "properties": {
+        "relationship": {
+          "title": "Relationship",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "supportedBy": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "title": "Supportedby",
+          "type": "array"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relationship",
+        "source",
+        "target"
+      ],
+      "title": "NormalizedRelationship",
+      "type": "object"
+    },
+    "NormalizedResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "responseModel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Responsemodel"
+        },
+        "statusCode": {
+          "title": "Statuscode",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "statusCode"
+      ],
+      "title": "NormalizedResponse",
+      "type": "object"
+    },
+    "NormalizedRule": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "supportedBy": {
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "title": "Supportedby",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rule"
+      ],
+      "title": "NormalizedRule",
+      "type": "object"
+    },
+    "NormalizedSource": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/NormalizedDiagnostic"
+          },
+          "title": "Diagnostics",
+          "type": "array"
+        },
+        "discoveryStatus": {
+          "title": "Discoverystatus",
+          "type": "string"
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/$defs/NormalizedEntity"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "enums": {
+          "items": {
+            "$ref": "#/$defs/NormalizedEnum"
+          },
+          "title": "Enums",
+          "type": "array"
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/NormalizedOperation"
+          },
+          "title": "Operations",
+          "type": "array"
+        },
+        "region": {
+          "title": "Region",
+          "type": "string"
+        },
+        "relationships": {
+          "items": {
+            "$ref": "#/$defs/NormalizedRelationship"
+          },
+          "title": "Relationships",
+          "type": "array"
+        },
+        "system": {
+          "title": "System",
+          "type": "string"
+        }
+      },
+      "required": [
+        "region",
+        "system",
+        "discoveryStatus"
+      ],
+      "title": "NormalizedSource",
+      "type": "object"
+    },
+    "NormalizedType": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "default": false,
+          "title": "Collection",
+          "type": "boolean"
+        },
+        "dataType": {
+          "$ref": "#/$defs/TypeKind"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "nullable": {
+          "default": false,
+          "title": "Nullable",
+          "type": "boolean"
+        },
+        "referencedModel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Referencedmodel"
+        },
+        "sourceType": {
+          "title": "Sourcetype",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataType",
+        "sourceType"
+      ],
+      "title": "NormalizedType",
+      "type": "object"
+    },
+    "SourceLocation": {
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "title": "Location",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "location"
+      ],
+      "title": "SourceLocation",
+      "type": "object"
+    },
+    "TypeKind": {
+      "enum": [
+        "string",
+        "integer",
+        "number",
+        "boolean",
+        "uuid",
+        "date-time",
+        "object",
+        "enum",
+        "unknown"
+      ],
+      "title": "TypeKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contractVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Contractversion",
+      "type": "string"
+    },
+    "phase": {
+      "const": "technical-normalization",
+      "default": "technical-normalization",
+      "title": "Phase",
+      "type": "string"
+    },
+    "rulesApplied": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Rulesapplied",
+      "type": "array"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/NormalizedSource"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/NormalizationSummary"
+    }
+  },
+  "required": [
+    "rulesApplied",
+    "sources",
+    "summary"
+  ],
+  "title": "NormalizedDiscoveryPortfolio",
+  "type": "object"
+}

@@ -1,0 +1,10 @@
+{
+  "contractVersion": "1.0",
+  "run": {"id": "run-invalid", "status": "complete", "toolVersion": "0.1.0"},
+  "region": "IN",
+  "system": "invalid",
+  "sources": [],
+  "operations": [{"id": "operation-invalid", "name": "Invalid", "method": "GET", "route": "/invalid", "requestEntityId": "missing-entity", "responses": []}],
+  "entities": [], "enums": [], "validations": [], "relationships": [], "evidence": [], "lineage": [], "diagnostics": [],
+  "summary": {"operationCount": 1, "entityCount": 0, "enumCount": 0, "relationshipCount": 0, "diagnosticCount": 0}
+}

@@ -1,0 +1,791 @@
+{
+  "$defs": {
+    "Attribute": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "originalName": {
+          "title": "Originalname",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeRef"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "originalName",
+        "type",
+        "required"
+      ],
+      "title": "Attribute",
+      "type": "object"
+    },
+    "Diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "subjectIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subjectids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "code",
+        "message"
+      ],
+      "title": "Diagnostic",
+      "type": "object"
+    },
+    "Entity": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "items": {
+            "$ref": "#/$defs/Attribute"
+          },
+          "title": "Attributes",
+          "type": "array"
+        },
+        "baseEntityId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseentityid"
+        },
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "originalName": {
+          "title": "Originalname",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "originalName"
+      ],
+      "title": "Entity",
+      "type": "object"
+    },
+    "EnumDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/EnumValue"
+          },
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "values"
+      ],
+      "title": "EnumDefinition",
+      "type": "object"
+    },
+    "EnumValue": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "EnumValue",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "observedValue": {
+          "title": "Observedvalue"
+        },
+        "sourceId": {
+          "title": "Sourceid",
+          "type": "string"
+        },
+        "subjectId": {
+          "title": "Subjectid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "subjectId",
+        "observedValue"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Lineage": {
+      "additionalProperties": false,
+      "properties": {
+        "endLine": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endline"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pointer"
+        },
+        "sourceId": {
+          "title": "Sourceid",
+          "type": "string"
+        },
+        "startLine": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startline"
+        },
+        "subjectId": {
+          "title": "Subjectid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "subjectId",
+        "path"
+      ],
+      "title": "Lineage",
+      "type": "object"
+    },
+    "Operation": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/Parameter"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "requestEntityId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requestentityid"
+        },
+        "responses": {
+          "items": {
+            "$ref": "#/$defs/Response"
+          },
+          "title": "Responses",
+          "type": "array"
+        },
+        "route": {
+          "title": "Route",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "method",
+        "route"
+      ],
+      "title": "Operation",
+      "type": "object"
+    },
+    "Parameter": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/ParameterLocation"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeRef"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "location",
+        "required",
+        "type"
+      ],
+      "title": "Parameter",
+      "type": "object"
+    },
+    "ParameterLocation": {
+      "enum": [
+        "route",
+        "query",
+        "header",
+        "body"
+      ],
+      "title": "ParameterLocation",
+      "type": "string"
+    },
+    "Relationship": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RelationshipKind"
+        },
+        "sourceId": {
+          "title": "Sourceid",
+          "type": "string"
+        },
+        "targetId": {
+          "title": "Targetid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "sourceId",
+        "targetId"
+      ],
+      "title": "Relationship",
+      "type": "object"
+    },
+    "RelationshipKind": {
+      "enum": [
+        "ACCEPTS",
+        "RETURNS",
+        "CONTAINS",
+        "INHERITS",
+        "CALLS"
+      ],
+      "title": "RelationshipKind",
+      "type": "string"
+    },
+    "Response": {
+      "additionalProperties": false,
+      "properties": {
+        "entityId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entityid"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "statusCode": {
+          "maximum": 599,
+          "minimum": 100,
+          "title": "Statuscode",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "statusCode"
+      ],
+      "title": "Response",
+      "type": "object"
+    },
+    "RunMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "toolVersion": {
+          "title": "Toolversion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "toolVersion"
+      ],
+      "title": "RunMetadata",
+      "type": "object"
+    },
+    "RunStatus": {
+      "enum": [
+        "complete",
+        "partial",
+        "failed"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    },
+    "Severity": {
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "SourceDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SourceKind"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "path",
+        "sha256"
+      ],
+      "title": "SourceDescriptor",
+      "type": "object"
+    },
+    "SourceKind": {
+      "enum": [
+        "roslyn",
+        "openapi"
+      ],
+      "title": "SourceKind",
+      "type": "string"
+    },
+    "Summary": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnosticCount": {
+          "minimum": 0,
+          "title": "Diagnosticcount",
+          "type": "integer"
+        },
+        "entityCount": {
+          "minimum": 0,
+          "title": "Entitycount",
+          "type": "integer"
+        },
+        "enumCount": {
+          "minimum": 0,
+          "title": "Enumcount",
+          "type": "integer"
+        },
+        "operationCount": {
+          "minimum": 0,
+          "title": "Operationcount",
+          "type": "integer"
+        },
+        "relationshipCount": {
+          "minimum": 0,
+          "title": "Relationshipcount",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operationCount",
+        "entityCount",
+        "enumCount",
+        "relationshipCount",
+        "diagnosticCount"
+      ],
+      "title": "Summary",
+      "type": "object"
+    },
+    "TypeKind": {
+      "enum": [
+        "string",
+        "integer",
+        "number",
+        "boolean",
+        "uuid",
+        "date-time",
+        "object",
+        "enum",
+        "unknown"
+      ],
+      "title": "TypeKind",
+      "type": "string"
+    },
+    "TypeRef": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "default": false,
+          "title": "Collection",
+          "type": "boolean"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "kind": {
+          "$ref": "#/$defs/TypeKind"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "nullable": {
+          "default": false,
+          "title": "Nullable",
+          "type": "boolean"
+        },
+        "referenceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Referenceid"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "TypeRef",
+      "type": "object"
+    },
+    "ValidationRule": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "evidenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidenceids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "targetId": {
+          "title": "Targetid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "targetId",
+        "rule"
+      ],
+      "title": "ValidationRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contractVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Contractversion",
+      "type": "string"
+    },
+    "diagnostics": {
+      "items": {
+        "$ref": "#/$defs/Diagnostic"
+      },
+      "title": "Diagnostics",
+      "type": "array"
+    },
+    "entities": {
+      "items": {
+        "$ref": "#/$defs/Entity"
+      },
+      "title": "Entities",
+      "type": "array"
+    },
+    "enums": {
+      "items": {
+        "$ref": "#/$defs/EnumDefinition"
+      },
+      "title": "Enums",
+      "type": "array"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "lineage": {
+      "items": {
+        "$ref": "#/$defs/Lineage"
+      },
+      "title": "Lineage",
+      "type": "array"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/Operation"
+      },
+      "title": "Operations",
+      "type": "array"
+    },
+    "region": {
+      "minLength": 1,
+      "title": "Region",
+      "type": "string"
+    },
+    "relationships": {
+      "items": {
+        "$ref": "#/$defs/Relationship"
+      },
+      "title": "Relationships",
+      "type": "array"
+    },
+    "run": {
+      "$ref": "#/$defs/RunMetadata"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceDescriptor"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/Summary"
+    },
+    "system": {
+      "minLength": 1,
+      "title": "System",
+      "type": "string"
+    },
+    "validations": {
+      "items": {
+        "$ref": "#/$defs/ValidationRule"
+      },
+      "title": "Validations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run",
+    "region",
+    "system",
+    "sources",
+    "summary"
+  ],
+  "title": "DiscoveryModel",
+  "type": "object"
+}
