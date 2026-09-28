@@ -1,6 +1,6 @@
 # Canonical Model Generator - Implementation Plan
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 Current release: Phase 2 API Analyzer Agent  
 Overall status: In progress
 
@@ -8,7 +8,7 @@ Overall status: In progress
 
 Status: Complete; live OpenAI semantic accuracy remains a separate Phase 2 acceptance item.
 
-- [x] **R1.1** Accept repository ZIP, OpenAPI YAML/JSON, or both; preserve specification-only coverage.
+- [x] **R1.1** Accept repository ZIP with optional OpenAPI YAML/JSON input. Specification-only coverage was implemented here and later removed by R1.10.
 - [x] **R1.2** Extract file/type/member hierarchy using Roslyn syntax, with stable source spans, parent-child links, typed reference candidates, explicit ambiguity, bounded chunk splitting and redaction.
 - [x] **R1.3** Provide local Sentence Transformer and OpenAI `text-embedding-ada-002`/embedding-3 model adapters selectable in the UI, with explicit cloud source sharing.
 - [x] **R1.4** Persist snapshot/model-specific Chroma indexes and versioned manifests; retrieve endpoint/entity/attribute context using exact lineage, lexical/vector ranking, and parent/relationship expansion.
@@ -17,10 +17,13 @@ Status: Complete; live OpenAI semantic accuracy remains a separate Phase 2 accep
 - [x] **R1.7** For focused target interpretation, inspect retrieved code usages as separate observed/inferred claims with validated chunk citations; mark a result partial when no grounded code claim is available.
 - [x] **R1.8** Correct repeated long-line window identity collisions, preserve distinct retrieval occurrences, and fail before Chroma upsert if any duplicate chunk identity remains. Verified with regression tests and repository-RAG indexing.
 - [x] **R1.9** Correct Roslyn syntax identities for a `GlobalStatement` and nested `LocalFunctionStatement` with the same span, preserving parent-child lineage and both retrieval results. Verified against the reported eShopOnWeb source snapshot and Chroma regression test.
+- [x] **R1.10** Require the .NET repository in Phase 1 across the Discovery graph, CLI, and Streamlit intake; keep OpenAPI YAML/JSON optional reconciliation evidence.
 - [x] **P2.6c** Isolate each Streamlit Discovery submission and newly built RAG index; do not expose or reuse indexes from other uploads, and pass only the selected application's index to API Analyzer.
 - [x] **P2.4c / P2.6d** Retain OpenAPI request/response/failure details when reconciling repository evidence, and allow the selected API Analyzer application profile to be rerun after success or failure.
 - [x] **P2.4d** Keep request and response body structure present in enriched OpenAPI by emitting an empty JSON schema when no contract model is discovered.
 - [x] **P2.4e** Always emit the enriched OpenAPI `servers` and `components.schemas` structures, using a deterministic relative server when no deployment URL is available.
+- [x] **P2.4f** Render each operation's request body before its responses, including an explicit empty schema when no request model was discovered.
+- [x] **P2.6l** Require a repository and snapshot-matched saved RAG index for every API Analyzer run. Emit a deterministic entity-relationship diagram as Mermaid `.mmd` source and an SVG image, render the Mermaid view in the API Analyzer tab, and include both files in individual and bundled downloads.
 
 Acceptance: exact subject retrieval returns its owning source and cited context; duplicate symbol
 names are not silently conflated; all limits and unresolved reference candidates are visible;
@@ -29,7 +32,7 @@ execution and offline adapter contracts are verified separately from live OpenAI
 
 ## 1. Objective
 
-Build a deterministic discovery workflow that analyzes one regional insurance .NET Web API and its OpenAPI specification, normalizes both sources into a versioned `DiscoveryModel`, validates the result, and generates traceable discovery artifacts.
+Build a deterministic discovery workflow that analyzes one regional insurance .NET Web API repository and, when supplied, its OpenAPI specification; normalizes the available evidence into a versioned `DiscoveryModel`; validates the result; and generates traceable discovery artifacts.
 
 The Discovery MVP is the foundation for later classification, regional alignment, and canonical-model generation. Those later capabilities are deliberately outside this release.
 
@@ -38,7 +41,7 @@ The Discovery MVP is the foundation for later classification, regional alignment
 ```text
 .NET repository -> Roslyn analyzer ----+
                                         +-> Normalize -> Reconcile -> Validate -> Artifacts
-OpenAPI spec ---> OpenAPI parser -------+
+Optional OpenAPI spec -> OpenAPI parser -+
 ```
 
 LangGraph orchestrates this workflow. Parsing, normalization, reconciliation, and validation remain deterministic services.
@@ -330,8 +333,10 @@ Status: In progress
 - [x] **P2.6f** Present model mappings as an expandable Region → API → Model hierarchy, with request/response endpoint mappings and field details beneath every model.
 - [x] **P2.6g** Present classifications as an expandable Region → Domain → Capability → API → Endpoint hierarchy, preserving unclassified/pending endpoints as explicit branches.
 - [x] **P2.6h** Enrich regional entity, attribute, and endpoint views with API Analyzer summary, description, business concept or purpose, and confidence fields while keeping missing semantic values explicit.
-- [x] **P2.6i** Allow an explicitly consented OpenAI Structured Outputs call to propose normalized names and descriptions for one regional entity and all its attributes. Preserve every structural ID and original name, store results only in browser session state, and present proposals separately from authoritative Discovery/API Analyzer data.
+- [x] **P2.6i** Allow an explicitly consented OpenAI Structured Outputs call to propose normalized names and descriptions for one regional entity and all its attributes. Validate the exact structural ID inventory, restore every authoritative original name from Discovery, store results only in browser session state, and present proposals separately from authoritative Discovery/API Analyzer data.
 - [x] **P2.6j** Persist each trusted application run under an ignored local run-ID directory and allow users to reopen previous applications after restart with their repository ZIP, Discovery artifacts, RAG association, and Phase 2 artifacts restored together.
+- [x] **P2.6k** Add an approved entire-region review workspace that supplies a bounded regional inventory for consistent AI terminology, batches entity normalization, captures per-entity and per-attribute original-versus-AI decisions and comments, merges duplicate approved entity names and duplicate approved field name/type pairs without changing source artifacts, preserves a complete truth map to source APIs/entities/fields/endpoints, and exports Excel and Mermaid artifacts.
+- [x] **P2.6l** Enforce RAG as a mandatory API Analyzer input and expose deterministic Mermaid-source and SVG entity-relationship artifacts, including an in-tab diagram view.
 - [x] **P2.7** Orchestrate provider preflight, context building, endpoint classification/enrichment, entity/attribute batching, enum enrichment, rendering, and validation with LangGraph.
 - [x] **P2.7a** Ingest bounded redacted repository chunks into an ephemeral local Chroma index, retrieve target-specific evidence before semantic decisions, allow evidence-backed controller/module domains and action capabilities, emit one domain tag per operation, and resolve known Phase 1 CLR type names before marking a type unresolved.
 - [x] **P2.7b** Establish production module boundaries for API Analyzer contracts, versioned prompts, provider adapters, and bounded tools while preserving the existing public workflow API.

@@ -62,6 +62,7 @@ def test_normalize_regional_entity_preserves_structure_and_returns_proposal() ->
     assert len(proposal["attributes"]) == len(model.entities[0].attributes)
     assert provider.context["region"] == model.region
     assert provider.context["entity"]["id"] == model.entities[0].id
+    assert provider.context["regionalInventory"] is None
 
 
 def test_normalize_regional_entity_rejects_changed_attribute_identity() -> None:
@@ -75,10 +76,35 @@ def test_normalize_regional_entity_rejects_changed_attribute_identity() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="preserve every attribute"):
+    with pytest.raises(ValueError, match="preserve every attribute ID exactly once"):
         normalize_regional_entity(
             model.model_dump_json(by_alias=True).encode(),
             model.entities[0].id,
             None,
             FakeNormalizationProvider(changed),
         )
+
+
+def test_normalize_regional_entity_restores_original_name_casing() -> None:
+    model, result = _model_and_result()
+    restyled = result.model_copy(
+        update={
+            "original_name": result.original_name.upper(),
+            "attributes": [
+                attribute.model_copy(update={"original_name": attribute.original_name.title()})
+                for attribute in result.attributes
+            ],
+        }
+    )
+
+    proposal = normalize_regional_entity(
+        model.model_dump_json(by_alias=True).encode(),
+        model.entities[0].id,
+        None,
+        FakeNormalizationProvider(restyled),
+    )
+
+    assert proposal["originalName"] == model.entities[0].name
+    assert [item["originalName"] for item in proposal["attributes"]] == [
+        attribute.name for attribute in model.entities[0].attributes
+    ]

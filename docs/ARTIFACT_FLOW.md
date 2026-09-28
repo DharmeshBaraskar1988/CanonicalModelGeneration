@@ -5,13 +5,12 @@ service. A graph *state* is temporary working data; an *artifact* is a serialize
 saved index that another step can open.
 
 ```text
-Repository and/or OpenAPI
+Repository + optional OpenAPI
   → Discovery Agent state
   → discovery-model.json ───────────────────────┐
   → five readable Discovery JSON views           │
                                                  ├→ API Analyzer state
 Repository → Repository RAG → saved index ──────┘  → four Phase 2 artifacts
-                (optional with YAML-only input)
 ```
 
 | Artifact | Producer | Actual consumer |
@@ -20,7 +19,7 @@ Repository → Repository RAG → saved index ──────┘  → four Ph
 | Five readable Discovery JSON views | Discovery `generate_artifacts` | UI/operator preview and download; **not** the API Analyzer |
 | `rag-manifest.json` **plus** `chroma/` | Repository RAG `ingest` | RAG query/focused interpretation; optionally reused by full API Analyzer |
 | Retrieved snippets / focused explanation | RAG query / API Analyzer `inspect` functions | Current UI session; not a saved full-run artifact |
-| Four Phase 2 files | API Analyzer `render_and_validate` | UI/operator preview and download; `enriched-openapi.yaml` is the planned Phase 3 input, but Phase 3 is not implemented |
+| Six Phase 2 files | API Analyzer `render_and_validate` | UI/operator preview and download, including Mermaid-source and SVG ER diagrams; `enriched-openapi.yaml` is the planned Phase 3 input, but Phase 3 is not implemented |
 
 Read each step in detail:
 

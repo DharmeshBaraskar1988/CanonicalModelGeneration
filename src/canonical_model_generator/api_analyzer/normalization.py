@@ -18,6 +18,7 @@ def normalize_regional_entity(
     entity_id: str,
     semantic_metadata: bytes | None,
     provider: EntityNormalizationProvider,
+    regional_inventory: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Propose names/descriptions without mutating the Discovery artifact."""
     discovery = DiscoveryModel.model_validate_json(discovery_artifact)
@@ -30,15 +31,29 @@ def normalize_regional_entity(
         "application": discovery.system,
         "entity": entity.model_dump(mode="json", by_alias=True),
         "apiAnalyzerSemantics": semantics,
+        "regionalInventory": regional_inventory,
     }
     result = provider.normalize_entity(context)
-    if result.entity_id != entity.id or result.original_name != entity.name:
-        raise ValueError("Normalization must preserve the entity ID and original name")
+    if result.entity_id != entity.id:
+        raise ValueError("Normalization must preserve the entity ID")
     expected = {attribute.id: attribute.name for attribute in entity.attributes}
-    actual = {attribute.attribute_id: attribute.original_name for attribute in result.attributes}
-    if actual != expected or len(result.attributes) != len(expected):
-        raise ValueError("Normalization must preserve every attribute ID and original name")
-    return result.model_dump(mode="json", by_alias=True)
+    actual_ids = [attribute.attribute_id for attribute in result.attributes]
+    if set(actual_ids) != set(expected) or len(actual_ids) != len(expected):
+        raise ValueError("Normalization must preserve every attribute ID exactly once")
+
+    # IDs are the structural identity. Some models restyle source names even when asked to
+    # preserve them (for example camelCase -> PascalCase), so restore authoritative names from
+    # Discovery rather than rejecting an otherwise structurally valid review proposal.
+    preserved = result.model_copy(
+        update={
+            "original_name": entity.name,
+            "attributes": [
+                attribute.model_copy(update={"original_name": expected[attribute.attribute_id]})
+                for attribute in result.attributes
+            ],
+        }
+    )
+    return preserved.model_dump(mode="json", by_alias=True)
 
 
 def _entity_semantics(content: bytes | None, entity_id: str) -> dict[str, Any] | None:

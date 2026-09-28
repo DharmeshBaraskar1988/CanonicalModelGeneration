@@ -53,8 +53,11 @@ security guarantees or business intent."""
 
 NORMALIZATION_SYSTEM_PROMPT = """Normalize the name and description of one entity and all supplied
 attributes within a single regional API. This is a review proposal, not canonicalization and not
-cross-API matching. Preserve every supplied entity and attribute ID and original name. Return
+cross-API matching. Preserve every supplied entity and attribute ID. Copy each original name
+verbatim, including its exact casing. Return
 exactly one attribute result for every supplied attribute. Prefer clear, stable, business-readable
 PascalCase entity names and camelCase attribute names while retaining the source meaning. Do not
 add, remove, merge, split, or change the type of any entity or attribute. Use the supplied API
-Analyzer semantics when available. Mark uncertain proposals with lower confidence."""
+Analyzer semantics when available. When a regional inventory is supplied, use it only to choose
+consistent normalized terminology for equivalent concepts across APIs; do not claim that two
+items are duplicates. Mark uncertain proposals with lower confidence."""

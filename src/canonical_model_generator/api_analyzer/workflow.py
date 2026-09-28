@@ -29,6 +29,7 @@ from canonical_model_generator.api_analyzer.contracts import (
 from canonical_model_generator.api_analyzer.contracts import (
     ResponseSemantic as _ResponseSemantic,
 )
+from canonical_model_generator.api_analyzer.er_diagram import render_er_mermaid, render_er_svg
 from canonical_model_generator.api_analyzer.providers.openai import (
     OpenAISemanticProvider as _OpenAISemanticProvider,
 )
@@ -138,28 +139,28 @@ def run_semantic_openapi_agent(
 ) -> dict[str, bytes]:
     """Run Phase 2 from a validated serialized Phase 1 artifact."""
     discovery_model = load_discovery_artifact(discovery_artifact)
-    if rag_store_path is not None:
-        if repository_root is None or not (rag_store_path / "rag-manifest.json").is_file():
-            raise ValueError("A saved RAG artifact and its repository snapshot are required")
-        saved_index = ChromaRepositoryIndex(rag_store_path, embedder)
-        try:
-            saved_index.validate_snapshot(repository_root, discovery_model)
-        finally:
-            saved_index.close()
-    with TemporaryDirectory(prefix="canonical-chroma-") as vector_store:
+    if repository_root is None or rag_store_path is None:
+        raise ValueError(
+            "API Analyzer requires the source repository and its saved RAG index; "
+            "RAG is mandatory for every analysis run."
+        )
+    if not (rag_store_path / "rag-manifest.json").is_file():
+        raise ValueError("API Analyzer requires a saved RAG artifact with rag-manifest.json")
+    saved_index = ChromaRepositoryIndex(rag_store_path, embedder)
+    try:
+        saved_index.validate_snapshot(repository_root, discovery_model)
+    finally:
+        saved_index.close()
+    with TemporaryDirectory(prefix="canonical-chroma-"):
         graph = _build_graph(provider, progress, embedder)
         result = graph.invoke(
             {
                 "discovery_model": discovery_model,
-                "repository_root": str((repository_root or Path(vector_store)).resolve()),
-                "vector_store_path": str(rag_store_path or vector_store),
-                "has_repository": repository_root is not None,
-                "persistent_index": rag_store_path is not None,
-                "errors": []
-                if repository_root
-                else [
-                    "OpenAPI-only input: implementation source and code retrieval are unavailable."
-                ],
+                "repository_root": str(repository_root.resolve()),
+                "vector_store_path": str(rag_store_path),
+                "has_repository": True,
+                "persistent_index": True,
+                "errors": [],
             }
         )
         return result["artifacts"]
@@ -946,6 +947,8 @@ def _render_artifacts(
         "semantic-metadata.json": _json_bytes(semantic_metadata),
         "evidence-map.json": _json_bytes(evidence_map),
         "enrichment-report.json": _json_bytes(report),
+        "entity-relationship-diagram.mmd": render_er_mermaid(model).encode("utf-8"),
+        "entity-relationship-diagram.svg": render_er_svg(model).encode("utf-8"),
     }
 
 
@@ -1146,7 +1149,6 @@ def _generate_openapi(
         route = re.sub(r"\{([^}:]+)(?::[^}]+)?\}", r"{\1}", operation.route)
         operation_doc: dict[str, Any] = {
             "operationId": operation.name,
-            "responses": {},
         }
         if semantic:
             operation_doc.update(
@@ -1243,6 +1245,7 @@ def _generate_openapi(
                 "content": {"application/json": {"schema": {}}},
                 "x-source": _subject_sources(model, operation.id, operation.name),
             }
+        operation_doc["responses"] = {}
         semantic_responses = (
             {item.status_code: item.description for item in semantic.responses} if semantic else {}
         )

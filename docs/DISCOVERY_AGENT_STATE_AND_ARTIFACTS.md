@@ -60,9 +60,8 @@ graph's live state or a live `DiscoveryModel` object to the API Analyzer.
 For a repository ZIP, [streamlit_app.py](../streamlit_app.py) inspects the archive, selects
 controller-owning projects, calls Roslyn for each, merges their models, optionally reconciles
 OpenAPI, and then calls `generate_artifacts` directly. It does **not** invoke the sequential
-`run_discovery` graph for that repository path. For OpenAPI-only upload it **does** call
-`run_discovery`. Both paths end with the same six generated file types and the same serialized
-DiscoveryModel handoff.
+`run_discovery` graph for that repository path. OpenAPI-only upload is rejected. Successful runs
+end with the same six generated file types and the same serialized DiscoveryModel handoff.
 
 Next: [Repository RAG state and artifacts](REPOSITORY_RAG_STATE_AND_ARTIFACTS.md), then
 [API Analyzer state and artifacts](API_ANALYZER_STATE_AND_ARTIFACTS.md).

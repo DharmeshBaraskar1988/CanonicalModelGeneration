@@ -1,7 +1,7 @@
 # Repository RAG
 
-The Discovery Agent accepts a .NET repository ZIP, OpenAPI YAML/JSON, or both. A YAML-only run
-keeps the document's contract and reports that implementation evidence is unavailable.
+The Discovery Agent requires a .NET repository ZIP. OpenAPI YAML/JSON is optional reconciliation
+evidence; it cannot be used alone for a new Phase 1 run.
 
 ## Example: how code is chunked
 

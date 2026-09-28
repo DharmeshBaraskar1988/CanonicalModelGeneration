@@ -187,17 +187,17 @@ def test_duplicate_chunk_ids_fail_before_chroma_upsert(tmp_path, fake_embedder, 
         index.close()
 
 
-def test_yaml_only_and_repository_only_discovery(tmp_path):
+def test_repository_is_required_and_openapi_is_optional(tmp_path):
     state = run_discovery(
         region="IN",
         system="quote",
         openapi=FIXTURE / "openapi/quote-api.yaml",
         output=tmp_path / "yaml",
     )
-    assert not state["errors"]
-    assert len(state["model"].operations) == 2
-    assert state["model"].entities
-    DiscoveryModel.model_validate_json((tmp_path / "yaml/discovery-model.json").read_bytes())
+    assert state["errors"] == [
+        "A repository boundary and project are required; OpenAPI is optional"
+    ]
+    assert not (tmp_path / "yaml").exists()
     state = run_discovery(
         region="IN",
         system="quote",
@@ -206,6 +206,7 @@ def test_yaml_only_and_repository_only_discovery(tmp_path):
         output=tmp_path / "repo",
     )
     assert not state["errors"] and len(state["model"].operations) == 2
+    DiscoveryModel.model_validate_json((tmp_path / "repo/discovery-model.json").read_bytes())
     missing = run_discovery(region="IN", system="quote", output=tmp_path / "missing")
     assert missing["errors"]
 

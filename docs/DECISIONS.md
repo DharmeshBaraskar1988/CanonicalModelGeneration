@@ -363,7 +363,7 @@ handoff APIs.
 ## ADR-019 - Repository or specification intake and reusable hierarchical RAG
 
 - Date: 2026-09-26
-- Status: Accepted; amends ADR-015 and ADR-018
+- Status: Superseded by ADR-025; amends ADR-015 and ADR-018
 
 ### Context
 
@@ -526,6 +526,92 @@ Persist each trusted application profile under `.applications/<run-id>/`, which 
 - Repository source is now intentionally retained on local disk instead of only in browser session memory; operators must protect or remove `.applications/` according to their data-handling policy.
 - Removing `.applications/<run-id>/` removes that history record but does not automatically remove a separately stored `.rag/` index.
 - API keys and source-sharing consent are never persisted.
+
+## ADR-025 - Require a repository in Phase 1
+
+- Date: 2026-09-28
+- Status: Accepted; supersedes the independent specification-only intake in ADR-019
+
+### Context
+
+Phase 1 must discover an application from its implementation repository. An OpenAPI YAML/JSON
+document can strengthen and reconcile that evidence, but a specification by itself does not meet
+the required Phase 1 application-discovery boundary.
+
+### Decision
+
+Require a trusted .NET repository and selected project for every Phase 1 Discovery run. Accept an
+OpenAPI 3 YAML/JSON document only as optional evidence to reconcile with the repository result.
+Enforce this boundary in the Discovery graph, command-line interface, and Streamlit intake.
+
+### Consequences
+
+- Repository-only Discovery remains supported.
+- Repository plus OpenAPI remains the fullest deterministic evidence path.
+- New specification-only Discovery runs are rejected before extraction or artifact generation.
+- The API Analyzer may retain defensive handling for older serialized specification-only artifacts,
+  but the active Phase 1 workflow no longer creates them.
+
+## ADR-026 - Make regional deduplication an explicit approved review artifact
+
+- Date: 2026-09-28
+- Status: Accepted; extends ADR-022 and ADR-023
+
+### Context
+
+Operators need one region-wide view that removes duplicate entity and attribute presentations while
+retaining proof of which APIs and endpoints supplied every item. Per-entity AI normalization alone
+does not provide an approval workflow or a lossless explanation of a regional merge.
+
+### Decision
+
+Add a region-wide review workspace over all completed applications in the selected region. Bulk
+normalization supplies a bounded inventory of regional entity names and field names/types so AI can
+propose consistent terminology without asserting duplicate truth. A reviewer chooses the original or suggestion independently for
+each entity and attribute and may add a comment. Approval creates a separate regional review
+artifact. Entities merge only on the reviewer-approved normalized name; attributes within that
+entity merge only on reviewer-approved name plus source type. The output retains source-to-regional
+truth rows for every entity and attribute, all involved APIs and endpoint mappings, reviewer choices,
+comments, and explicit retained-versus-merged actions. Export the approved result as Excel and its
+lineage as Mermaid. Do not mutate or delete Discovery or API Analyzer facts.
+
+### Consequences
+
+- "Removed duplicate" means absent from the approved regional presentation, not deleted from a
+  source application or artifact.
+- Similar concepts with different approved names remain separate; same-name fields with different
+  source types remain separate to avoid a silent type conflict.
+- The regional review is human-approved and auditable, but it is not an ACORD mapping or the final
+  enterprise canonical model.
+- Re-approval regenerates downloads from the current decisions; source truth remains available in
+  the workbook and Mermaid graph.
+
+## ADR-027 - Require RAG and publish entity-relationship artifacts in API Analyzer
+
+- Date: 2026-09-28
+- Status: Accepted; strengthens ADR-019 and ADR-021
+
+### Context
+
+Allowing programmatic API Analyzer callers to omit the saved repository index made evidence
+retrieval optional outside the Streamlit readiness checks. Operators also need the discovered
+contract-model relationships as both a visible diagram and portable artifacts.
+
+### Decision
+
+Require repository source plus a saved, manifest-backed, snapshot-matched RAG index at the public
+API Analyzer boundary. Reject specification-only and implicit ephemeral-index analysis. During
+artifact rendering, generate an ER diagram from deterministic Discovery entities, attributes,
+containment, and inheritance as Mermaid source and SVG. Render the Mermaid source in the API
+Analyzer tab and include both formats in individual downloads and the Phase 2 bundle.
+
+### Consequences
+
+- Every accepted semantic run uses the same validated retrieval prerequisite, regardless of caller.
+- Older specification-only Discovery artifacts remain readable but cannot enter Phase 2 analysis.
+- Diagram structure is deterministic Discovery truth; provider descriptions do not change nodes or
+  edges.
+- SVG is generated locally and does not require a browser-side export or external rendering service.
 
 ## ADR template
 

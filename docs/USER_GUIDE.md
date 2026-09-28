@@ -3,7 +3,7 @@
 This guide explains how to install the prerequisites, restore the .NET and Python
 dependencies, run the application, and verify a local setup.
 
-For repository or YAML input and code retrieval, see [Repository RAG](REPOSITORY_RAG.md).
+For repository input, optional YAML reconciliation, and code retrieval, see [Repository RAG](REPOSITORY_RAG.md).
 
 ## 1. Prerequisites
 
@@ -126,11 +126,11 @@ After successful discovery, the UI provides these operator-facing artifacts:
 
 Run the three tabs in order:
 
-1. In **Discovery Agent**, choose the region and application name, then upload a repository ZIP,
-   an OpenAPI document, or both. A successful run records the application profile in this browser
-   session.
-2. For a repository, open **Repository RAG** and build its index. Each build creates a fresh,
-   isolated index for the currently selected upload. YAML-only runs skip this step.
+1. In **Discovery Agent**, choose the region and application name, then upload the required
+   repository ZIP and, optionally, an OpenAPI document. A successful run records the application
+   profile in this browser session.
+2. Open **Repository RAG** and build the repository index. Each build creates a fresh, isolated
+   index for the currently selected upload.
 3. In **Phase 2 API Analyzer**, select the completed application by name, region, and repository
    ZIP. Check its RAG status, provide a valid OpenAI key (or session override), choose the model,
    and acknowledge source sharing. The page lists any missing requirements before enabling
@@ -147,8 +147,8 @@ run starts.
 
 ## 7. Run deterministic discovery from the CLI
 
-The CLI accepts a repository/project, an OpenAPI document, or both, plus an output directory.
-This example analyzes the included Quote API fixture using both sources:
+The CLI requires a repository and project, accepts an optional OpenAPI document, and requires an
+output directory. This example analyzes the included Quote API fixture using both sources:
 
 ```powershell
 .\.venv\Scripts\python.exe -m canonical_model_generator.cli `

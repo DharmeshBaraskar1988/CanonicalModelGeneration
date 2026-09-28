@@ -37,7 +37,6 @@ from canonical_model_generator.discovery_agent.roslyn import (  # noqa: E402
     extract_roslyn,
     merge_roslyn_models,
 )
-from canonical_model_generator.discovery_agent.workflow import run_discovery  # noqa: E402
 from canonical_model_generator.intake import (  # noqa: E402
     IntakeError,
     inspect_repository_zip,
@@ -47,6 +46,11 @@ from canonical_model_generator.regional_catalog import (  # noqa: E402
     regional_catalog_rows,
     regional_domain_tree,
     regional_model_tree,
+)
+from canonical_model_generator.regional_review import (  # noqa: E402
+    build_regional_review,
+    render_regional_review_excel,
+    render_regional_review_mermaid,
 )
 from canonical_model_generator.repository_rag.embeddings import (  # noqa: E402
     LOCAL_MODEL,
@@ -96,6 +100,7 @@ st.session_state.setdefault("rag_semantics", None)
 st.session_state.setdefault("application_runs", {})
 st.session_state.setdefault("active_application_id", None)
 st.session_state.setdefault("regional_normalizations", {})
+st.session_state.setdefault("approved_regional_reviews", {})
 if not st.session_state["application_runs"]:
     st.session_state["application_runs"] = load_application_records(APPLICATION_HISTORY_ROOT)
 
@@ -201,7 +206,9 @@ def run_uploaded_semantic_generation(
     embedder=None,
 ) -> dict[str, bytes]:
     if repository_archive is None:
-        return run_api_analyzer_agent(discovery_artifact, None, provider, progress)
+        raise ValueError("API Analyzer requires the source repository and its saved RAG index.")
+    if rag_store_path is None:
+        raise ValueError("API Analyzer requires a saved RAG index for the selected repository.")
     inspect_repository_zip(repository_archive)
     with TemporaryDirectory(prefix="canonical-semantic-openapi-") as temporary:
         repository = Path(temporary) / "repository"
@@ -253,27 +260,7 @@ def run_uploaded_discovery(
     openapi_file: UploadedFile | None,
 ) -> tuple[dict[str, bytes], list[str], bytes]:
     if repository_file is None:
-        if openapi_file is None:
-            raise IntakeError("Provide a repository ZIP or an OpenAPI document")
-        validate_openapi(openapi_file.getvalue(), openapi_file.name)
-        with TemporaryDirectory(prefix="canonical-openapi-") as temporary:
-            workspace = Path(temporary)
-            specification = workspace / Path(openapi_file.name).name
-            specification.write_bytes(openapi_file.getvalue())
-            output = workspace / "output"
-            state = run_discovery(
-                region=region, system=system, openapi=specification, output=output
-            )
-            if state.get("errors"):
-                raise IntakeError("; ".join(state["errors"]))
-            return (
-                {
-                    label: (output / name).read_bytes()
-                    for label, name in DISCOVERY_ARTIFACTS.items()
-                },
-                [],
-                (output / "discovery-model.json").read_bytes(),
-            )
+        raise IntakeError("A trusted .NET repository ZIP is required; OpenAPI is optional.")
     archive = repository_file.getvalue()
     inventory = inspect_repository_zip(archive)
     if not inventory.projects:
@@ -430,17 +417,14 @@ with discovery_tab:
             )
 
         st.subheader("Source inputs", anchor=False)
-        st.caption("Upload a repository ZIP, an OpenAPI YAML/JSON document, or both.")
+        st.caption("Upload a repository ZIP and, optionally, an OpenAPI YAML/JSON document.")
         repository_column, contract_column = st.columns(2, gap="large")
         with repository_column:
             repository_file: UploadedFile | None = st.file_uploader(
                 "Trusted .NET repository ZIP",
                 type="zip",
                 max_upload_size=100,
-                help=(
-                    "Optional when providing OpenAPI. Roslyn/MSBuild analyzes the repository "
-                    "as trusted code."
-                ),
+                help=("Required. Roslyn/MSBuild analyzes the repository as trusted code."),
                 key="repository_zip",
             )
             st.caption("Repository input · ZIP · Up to 100 MB")
@@ -450,8 +434,8 @@ with discovery_tab:
                 type=["json", "yaml", "yml"],
                 max_upload_size=10,
                 help=(
-                    "Can be used alone. Without a repository, results describe the specification "
-                    "and implementation code retrieval is unavailable."
+                    "Optional. When supplied, the specification is reconciled with repository "
+                    "evidence."
                 ),
                 key="openapi_document",
             )
@@ -462,15 +446,8 @@ with discovery_tab:
         )
 
     if submitted:
-        if (
-            not region
-            or not region.strip()
-            or not system.strip()
-            or not (repository_file or openapi_file)
-        ):
-            st.error(
-                "Region, application name, and either a repository ZIP or OpenAPI are required."
-            )
+        if not region or not region.strip() or not system.strip() or repository_file is None:
+            st.error("Region, application name, and a repository ZIP are required.")
         else:
             try:
                 with st.status("Running deterministic discovery...", expanded=True) as status:
@@ -487,10 +464,8 @@ with discovery_tab:
                         discovery_model=discovery_model,
                         discovery_artifacts=artifacts,
                         projects=selected_projects,
-                        repository_archive=(
-                            repository_file.getvalue() if repository_file else None
-                        ),
-                        repository_name=repository_file.name if repository_file else "OpenAPI only",
+                        repository_archive=repository_file.getvalue(),
+                        repository_name=repository_file.name,
                         openapi_name=openapi_file.name if openapi_file else "Not uploaded",
                     )
                     status.update(label="Discovery complete", state="complete", expanded=False)
@@ -511,17 +486,13 @@ with discovery_tab:
             )
             st.caption(f"Repository: {profile['repository']}")
             st.caption("Projects: " + ", ".join(st.session_state["discovery_projects"]))
-        if st.session_state["repository_archive"] is None:
-            st.info(
-                "These artifacts describe the uploaded specification. "
-                "Repository code was not supplied."
-            )
         st.warning(
             "Current entity coverage is limited to user-authored ViewModels and concrete request/"
             "response models reachable from API endpoints. Base infrastructure classes, DTOs, "
             "domain types, generated types, and unrelated models are excluded. "
             "Deep call paths, persistence, mappings, integrations, security, and Razor Pages "
-            "remain open gaps. For YAML-only input, the document's schemas are retained.",
+            "remain open gaps. When OpenAPI is supplied, its schemas are reconciled with the "
+            "repository evidence.",
             icon=":material/radar:",
         )
         st.subheader("Discovery artifact tree")
@@ -845,7 +816,9 @@ with phase_two_tab:
             st.error(f"Previous API Analyzer run failed: {previous_error}")
             st.caption("Correct the issue above, then run the selected application again.")
         if st.session_state["repository_archive"] is None:
-            st.info("Specification-only enrichment: implementation code evidence is unavailable.")
+            st.error(
+                "API Analyzer requires repository source; specification-only runs are disabled."
+            )
         configured_key = openai_api_key()
         key_override = st.text_input(
             "OpenAI API key (optional session override)",
@@ -881,7 +854,9 @@ with phase_two_tab:
         missing = []
         if st.session_state["discovery_model"] is None:
             missing.append("Select an application with completed Discovery.")
-        if st.session_state["repository_archive"] is not None and not (
+        if st.session_state["repository_archive"] is None:
+            missing.append("Select an application with its trusted repository archive.")
+        if not (
             st.session_state["rag_store_path"]
             and (Path(st.session_state["rag_store_path"]) / "rag-manifest.json").is_file()
         ):
@@ -993,9 +968,25 @@ with phase_two_tab:
                     "partial. Review enrichment-report.json for validation and coverage gaps.",
                     icon=":material/warning:",
                 )
+            mermaid_artifact = phase_2_artifacts.get("entity-relationship-diagram.mmd")
+            if mermaid_artifact:
+                st.subheader("Entity relationship diagram", anchor=False)
+                st.caption(
+                    "This view and both downloads are generated from deterministic Discovery "
+                    "entities and relationships; semantic descriptions do not alter the structure."
+                )
+                st.mermaid_chart(mermaid_artifact.decode("utf-8"))
             with st.container(horizontal=True):
                 for filename, content in phase_2_artifacts.items():
-                    mime = "application/yaml" if filename.endswith(".yaml") else "application/json"
+                    mime = (
+                        "application/yaml"
+                        if filename.endswith(".yaml")
+                        else "image/svg+xml"
+                        if filename.endswith(".svg")
+                        else "text/plain"
+                        if filename.endswith(".mmd")
+                        else "application/json"
+                    )
                     st.download_button(
                         f"Download {filename}",
                         data=content,
@@ -1017,6 +1008,10 @@ with phase_two_tab:
             )
             if preview_name.endswith(".yaml"):
                 st.code(phase_2_artifacts[preview_name].decode("utf-8"), language="yaml")
+            elif preview_name.endswith(".mmd"):
+                st.code(phase_2_artifacts[preview_name].decode("utf-8"), language="text")
+            elif preview_name.endswith(".svg"):
+                st.image(phase_2_artifacts[preview_name])
             else:
                 st.json(json.loads(phase_2_artifacts[preview_name]), expanded=2)
 
@@ -1082,10 +1077,11 @@ with regional_tab:
                 sum(row["Domain"] != "Awaiting API Analyzer" for row in endpoint_rows),
             )
 
-        models_tab, domains_tab = st.tabs(
+        models_tab, domains_tab, review_tab = st.tabs(
             [
                 ":material/schema: Models and mappings",
                 ":material/hub: Domains and capabilities",
+                ":material/fact_check: Regional normalization review",
             ]
         )
         with models_tab:
@@ -1285,3 +1281,270 @@ with regional_tab:
                                     )
             else:
                 st.info("No endpoints were discovered for this selection.")
+        with review_tab:
+            st.caption(
+                "Review every entity and attribute across the entire selected region. "
+                "Approved duplicates are merged only in the downloadable regional view; all "
+                "source entities, fields, APIs, and endpoints remain in the truth mapping."
+            )
+            entire_region_tree = regional_model_tree(runs, region=selected_region)
+            entity_count = sum(len(branch["models"]) for branch in entire_region_tree)
+            field_count = sum(
+                len(model["fields"]) for branch in entire_region_tree for model in branch["models"]
+            )
+            with st.container(horizontal=True):
+                st.metric("Regional APIs", len(regional_runs))
+                st.metric("Source entities", entity_count)
+                st.metric("Source attributes", field_count)
+
+            with st.expander("Region-wide normalization settings", expanded=not entity_count):
+                regional_key_override = st.text_input(
+                    "OpenAI API key (optional session override)",
+                    type="password",
+                    key="regional_review_key",
+                )
+                regional_model = st.text_input(
+                    "Normalization model",
+                    value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                    key="regional_review_model",
+                )
+                regional_consent = st.checkbox(
+                    "Allow every entity, its attributes, and existing API Analyzer descriptions "
+                    "in this region to be sent to OpenAI.",
+                    key="regional_review_consent",
+                )
+                regional_api_key = regional_key_override.strip() or openai_api_key()
+                if st.button(
+                    "Normalize entire region",
+                    icon=":material/auto_fix_high:",
+                    type="primary",
+                    key="normalize_entire_region",
+                    disabled=(
+                        not entity_count
+                        or not regional_consent
+                        or not regional_api_key
+                        or not regional_model.strip()
+                    ),
+                ):
+                    provider = OpenAISemanticProvider(
+                        api_key=regional_api_key or "",
+                        model=regional_model.strip(),
+                    )
+                    progress = st.progress(0, text="Checking provider access")
+                    try:
+                        provider.validate_connection()
+                        regional_inventory = [
+                            {
+                                "api": branch["api"],
+                                "entity": model_branch["name"],
+                                "attributes": [
+                                    {"name": field["Field"], "type": field["Type"]}
+                                    for field in model_branch["fields"]
+                                ],
+                            }
+                            for branch in entire_region_tree
+                            for model_branch in branch["models"]
+                        ]
+                        processed = 0
+                        for branch in entire_region_tree:
+                            selected_run = runs[branch["runId"]]
+                            for model_branch in branch["models"]:
+                                normalization_id = f"{branch['runId']}:{model_branch['id']}"
+                                progress.progress(
+                                    processed / entity_count,
+                                    text=(f"Normalizing {branch['api']} · {model_branch['name']}"),
+                                )
+                                st.session_state["regional_normalizations"][normalization_id] = (
+                                    normalize_regional_entity(
+                                        selected_run["discovery_model"],
+                                        model_branch["id"],
+                                        selected_run.get("phase_2_artifacts", {}).get(
+                                            "semantic-metadata.json"
+                                        ),
+                                        provider,
+                                        regional_inventory,
+                                    )
+                                )
+                                processed += 1
+                        progress.progress(1.0, text="Regional normalization complete")
+                        st.rerun()
+                    except Exception as exc:
+                        progress.empty()
+                        st.error(
+                            "Regional normalization stopped. Existing completed proposals were "
+                            f"kept. Check provider access or output validity. Error: "
+                            f"{type(exc).__name__}."
+                        )
+
+            if not entity_count:
+                st.info("No endpoint contract entities were discovered in this region.")
+            else:
+                decisions: dict[str, dict] = {}
+                proposals = st.session_state["regional_normalizations"]
+                for branch in entire_region_tree:
+                    st.markdown(f"#### :material/api: {branch['api']}")
+                    for model_branch in branch["models"]:
+                        review_id = f"{branch['runId']}:{model_branch['id']}"
+                        proposal = proposals.get(review_id, {})
+                        suggested_attributes = {
+                            item["attributeId"]: item for item in proposal.get("attributes", [])
+                        }
+                        with st.expander(
+                            f":material/schema: {model_branch['name']} · "
+                            f"{len(model_branch['fields'])} fields"
+                        ):
+                            st.markdown(
+                                f"**AI entity suggestion:** "
+                                f"{proposal.get('normalizedName', 'Not normalized')}"
+                            )
+                            entity_choice = st.segmented_control(
+                                "Approved entity value",
+                                ["Original", "AI suggestion"],
+                                default="Original",
+                                key=f"entity_choice_{review_id}",
+                                disabled=not proposal,
+                            )
+                            entity_comment = st.text_input(
+                                "Optional entity review comment",
+                                key=f"entity_comment_{review_id}",
+                            )
+                            field_rows = []
+                            for field in model_branch["fields"]:
+                                suggested = suggested_attributes.get(field["id"], {})
+                                field_rows.append(
+                                    {
+                                        "Attribute ID": field["id"],
+                                        "Original": field["Field"],
+                                        "AI suggestion": suggested.get(
+                                            "normalizedName", "Not normalized"
+                                        ),
+                                        "Type": field["Type"],
+                                        "Approved value": "Original",
+                                        "Comment": "",
+                                    }
+                                )
+                            edited_fields = st.data_editor(
+                                field_rows,
+                                hide_index=True,
+                                width="stretch",
+                                key=f"field_review_{review_id}",
+                                disabled=[
+                                    "Attribute ID",
+                                    "Original",
+                                    "AI suggestion",
+                                    "Type",
+                                ],
+                                column_config={
+                                    "Attribute ID": None,
+                                    "Approved value": st.column_config.SelectboxColumn(
+                                        "Approved value",
+                                        options=["Original", "AI suggestion"],
+                                        required=True,
+                                    ),
+                                    "Comment": st.column_config.TextColumn(
+                                        "Optional reviewer comment"
+                                    ),
+                                },
+                            )
+                            decisions[review_id] = {
+                                "selection": entity_choice or "Original",
+                                "comment": entity_comment,
+                                "attributes": {
+                                    row["Attribute ID"]: {
+                                        "selection": row["Approved value"],
+                                        "comment": row["Comment"],
+                                    }
+                                    for row in edited_fields
+                                },
+                            }
+                            if model_branch["mappings"]:
+                                st.markdown("**Endpoints involved**")
+                                st.dataframe(
+                                    model_branch["mappings"],
+                                    hide_index=True,
+                                    width="stretch",
+                                )
+
+                st.divider()
+                st.markdown("#### Approve and generate regional artifacts")
+                st.caption(
+                    "Entities merge by approved name. Attributes merge within an approved "
+                    "entity only when approved name and source type match. Approval creates a "
+                    "regional review artifact and never modifies source Discovery artifacts."
+                )
+                approval_confirmed = st.checkbox(
+                    "I reviewed the selections and approve this regional deduplication view.",
+                    key=f"regional_approval_confirmed_{selected_region}",
+                )
+                if st.button(
+                    "Approve regional view",
+                    icon=":material/verified:",
+                    type="primary",
+                    disabled=not approval_confirmed,
+                    key=f"approve_regional_view_{selected_region}",
+                ):
+                    approved_review = build_regional_review(
+                        selected_region,
+                        entire_region_tree,
+                        proposals,
+                        decisions,
+                    )
+                    st.session_state["approved_regional_reviews"][selected_region] = {
+                        "review": approved_review,
+                        "excel": render_regional_review_excel(approved_review),
+                        "mermaid": render_regional_review_mermaid(approved_review),
+                    }
+                    st.success("Regional view approved. Both artifacts are ready.")
+
+                approved = st.session_state["approved_regional_reviews"].get(selected_region)
+                if approved:
+                    review = approved["review"]
+                    with st.container(horizontal=True):
+                        st.metric(
+                            "Approved regional entities",
+                            review["summary"]["regionalEntities"],
+                        )
+                        st.metric(
+                            "Duplicate entities merged",
+                            review["summary"]["mergedDuplicateEntities"],
+                        )
+                        st.metric(
+                            "Approved regional attributes",
+                            review["summary"]["regionalAttributes"],
+                        )
+                    duplicate_rows = [
+                        {
+                            "Action": item["action"],
+                            "API": item["api"],
+                            "Source entity": item["sourceEntity"],
+                            "Source attribute": item["sourceAttribute"],
+                            "Regional entity": item["regionalEntity"],
+                            "Regional attribute": item["regionalAttribute"],
+                            "Endpoints involved": "; ".join(item["endpoints"]),
+                        }
+                        for item in review["removedDuplicates"]
+                    ]
+                    st.markdown("**Removed duplicate truth map**")
+                    if duplicate_rows:
+                        st.dataframe(duplicate_rows, hide_index=True, width="stretch")
+                    else:
+                        st.info("No duplicates matched the approved names and field types.")
+                    with st.container(horizontal=True):
+                        st.download_button(
+                            "Download approved regional Excel",
+                            data=approved["excel"],
+                            file_name=f"{selected_region.lower()}-regional-model.xlsx",
+                            mime=(
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            ),
+                            icon=":material/download:",
+                            key=f"download_regional_excel_{selected_region}",
+                        )
+                        st.download_button(
+                            "Download Mermaid truth map",
+                            data=approved["mermaid"],
+                            file_name=f"{selected_region.lower()}-regional-truth-map.mmd",
+                            mime="text/plain",
+                            icon=":material/download:",
+                            key=f"download_regional_mermaid_{selected_region}",
+                        )

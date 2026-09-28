@@ -6,10 +6,14 @@ The first unchecked item is the recommended next action.
 
 ## Immediate
 
+- [x] **NS-P2-07 / P2.6l:** Make repository RAG mandatory at the API Analyzer boundary and generate a deterministic entity-relationship diagram as downloadable Mermaid source and SVG, with an in-tab Mermaid view.
+- [x] **NS-UI-26 / P2.6k:** Add an entire-region normalization approval tab with per-entity and per-field original-versus-AI decisions, optional comments, deterministic approved-name/type deduplication, complete source/API/endpoint truth mapping, and Excel plus Mermaid downloads.
+- [x] **NS-P2-06 / P2.4f:** Show each operation's request body before responses in enriched OpenAPI, including the empty request structure.
+- [x] **NS-P1-01 / R1.10:** Require a repository in Phase 1 and treat OpenAPI YAML/JSON as optional reconciliation evidence across the graph, CLI, UI, tests, and operator documentation.
 - [x] **NS-P2-05 / P2.4e:** Always emit `servers` and `components.schemas` in enriched OpenAPI, with a deterministic relative server when no deployment URL is available.
 - [x] **NS-P2-04 / P2.4d:** Keep request and response body structure present in enriched OpenAPI by emitting an empty JSON schema when no contract model is discovered.
 - [x] **NS-UI-25 / P2.6j:** Persist trusted application profiles locally and add a previous-application selector that restores the repository, Discovery artifacts, RAG association, and Phase 2 output after restart.
-- [x] **NS-UI-24 / P2.6i:** Add review-only, per-entity LLM normalization for entity and attribute names/descriptions on the Regional catalog page, with consent, schema validation, and side-by-side proposal columns.
+- [x] **NS-UI-24 / P2.6i:** Add review-only, per-entity LLM normalization for entity and attribute names/descriptions on the Regional catalog page, with consent, schema validation, side-by-side proposal columns, and deterministic restoration of source names when a provider changes only their casing.
 - [x] **NS-UI-23 / P2.6h:** Add API Analyzer descriptions and business metadata to regional entity, field, and endpoint tree views, with explicit pending values before enrichment.
 - [x] **NS-UI-22 / P2.6g:** Replace the regional domain/capability table with a Region → Domain → Capability → API → Endpoint tree, retaining pending classifications explicitly.
 - [x] **NS-UI-21 / P2.6f:** Replace the regional model-mapping table with a Region → API → Model tree that expands into endpoint usages and model fields.
@@ -18,7 +22,7 @@ The first unchecked item is the recommended next action.
 - [x] **NS-UI-19 / P2.6c:** Isolate each Discovery upload and its freshly built RAG index in the Streamlit session; remove cross-upload saved-index selection so API Analyzer uses only the selected application's index.
 - [x] **NS-RAG-04 / R1.9:** Fix Roslyn syntax-node identity for top-level statements and nested local functions that share a source span; verify against the reported eShopOnWeb snapshot.
 - [x] **NS-RAG-03 / R1.8:** Fix duplicate Chroma IDs for repeated long-line windows, retain both retrieval occurrences, and reject any remaining collision before upsert. The reported repository itself was not available for a live retry.
-- [x] **NS-RAG-01 / R1.1-R1.6:** Implement repository-or-YAML intake and reusable repository RAG: Roslyn hierarchy, typed relationship candidates, selectable Sentence Transformer/OpenAI embeddings, persistent Chroma, endpoint/entity/attribute retrieval, and grounded API Analyzer interpretation.
+- [x] **NS-RAG-01 / R1.1-R1.6:** Implement repository intake with optional YAML/JSON and reusable repository RAG: Roslyn hierarchy, typed relationship candidates, selectable Sentence Transformer/OpenAI embeddings, persistent Chroma, endpoint/entity/attribute retrieval, and grounded API Analyzer interpretation.
 - [x] **NS-RAG-02 / R1.7:** Require focused target interpretation to explain retrieved code usages with claim-level chunk citations and explicit partial status when code meaning cannot be grounded.
 - [x] **NS-UI-18 / P2.6b:** Make the Discovery → RAG → API Analyzer path selectable by in-session region/application/repository profile, preserve the matching RAG index, and show actionable Phase 2 readiness requirements.
 - [x] **NS-01 / M0.1-M0.3:** Add or identify one representative regional Quote API and record its solution path, .NET SDK version, region name, system name, and OpenAPI path.

@@ -74,10 +74,8 @@ def run_discovery(
 def _validate_inputs(state: DiscoveryState) -> DiscoveryState:
     errors = list(state.get("errors", []))
     repository = Path(state["repository"]).resolve() if state["repository"] else None
-    if not state["project"] and not state["openapi"]:
-        errors.append("Provide a repository/project or an OpenAPI document")
-    if state["project"] and not repository:
-        errors.append("A repository boundary is required with a project")
+    if not repository or not state["project"]:
+        errors.append("A repository boundary and project are required; OpenAPI is optional")
     if repository and not repository.is_dir():
         errors.append("Repository directory does not exist")
     for label, value in (("Project", state["project"]), ("OpenAPI", state["openapi"])):
@@ -116,7 +114,7 @@ def _openapi(state: DiscoveryState) -> DiscoveryState:
             Path(state["openapi"]),
             state["region"],
             state["system"],
-            Path(state["repository"]) if state["repository"] else Path(state["openapi"]).parent,
+            Path(state["repository"]),
         )
         return _event(state, "openapi", "ok", openapi_model=model)
     except Exception as exc:
@@ -129,7 +127,7 @@ def _reconcile(state: DiscoveryState) -> DiscoveryState:
     if "roslyn_model" in state and "openapi_model" in state:
         model = reconcile(state["roslyn_model"], state["openapi_model"])
     else:
-        model = state.get("roslyn_model") or state["openapi_model"]
+        model = state["roslyn_model"]
     return _event(state, "reconcile", "ok", model=model)
 
 

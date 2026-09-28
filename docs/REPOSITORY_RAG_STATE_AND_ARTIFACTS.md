@@ -45,8 +45,8 @@ for `discovery-model.json`, and no Discovery graph state is passed through it.
 The Streamlit repository workflow requires building a fresh saved index before running the full
 API Analyzer. Each Discovery submission and each index build is isolated; the UI does not list or
 reuse indexes from other uploads. Library callers may omit `rag_store_path`; then the Analyzer
-builds a temporary index for that run. With YAML-only input there is no code index or
-implementation evidence, and the Analyzer reports partial coverage.
+builds a temporary index for that run. New Phase 1 runs always include a repository; defensive
+support for older specification-only artifacts remains internal to the Analyzer.
 
 Previous: [Discovery Agent state and artifacts](DISCOVERY_AGENT_STATE_AND_ARTIFACTS.md).
 Next: [API Analyzer state and artifacts](API_ANALYZER_STATE_AND_ARTIFACTS.md).

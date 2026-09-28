@@ -29,24 +29,14 @@ def test_api_analyzer_boundary_requires_a_discovery_artifact() -> None:
         load_discovery_artifact(object())  # type: ignore[arg-type]
 
 
-def test_yaml_only_enrichment_reports_missing_implementation_without_indexing(monkeypatch):
-    def unexpected_index(*args, **kwargs):
-        raise AssertionError("YAML-only enrichment must not initialize code retrieval")
-
-    monkeypatch.setattr(
-        "canonical_model_generator.api_analyzer.workflow.ChromaRepositoryIndex", unexpected_index
-    )
+def test_api_analyzer_requires_repository_rag():
     model = discover_openapi(
         Path("fixtures/RegionalQuoteApi/openapi/quote-api.yaml"), "IN", "quote"
     )
-    outputs = run_api_analyzer_agent(
-        model.model_dump_json(by_alias=True), None, FakeAPIAnalyzerProvider()
-    )
-    report = json.loads(outputs["enrichment-report.json"])
-    assert report["status"] == "partial"
-    assert report["retrieval"]["status"] == "specification-only"
-    assert any("OpenAPI-only" in error for error in report["validationErrors"])
-    assert all(i["retrievedFragmentCount"] == 0 for i in report["investigations"])
+    with pytest.raises(ValueError, match="RAG is mandatory"):
+        run_api_analyzer_agent(
+            model.model_dump_json(by_alias=True), None, FakeAPIAnalyzerProvider()
+        )
 
 
 class FakeAPIAnalyzerProvider:
@@ -214,6 +204,13 @@ def test_api_analyzer_embeds_semantics_and_retrieves_low_confidence_context(
     assert report["retrieval"]["provider"] == "chroma"
     assert report["retrieval"]["storage"] == "persistent-local"
     assert report["retrieval"]["chunksIndexed"] > 0
+    mermaid = artifacts["entity-relationship-diagram.mmd"].decode()
+    svg = artifacts["entity-relationship-diagram.svg"].decode()
+    assert mermaid.startswith("erDiagram\n")
+    assert "CreateQuoteRequest" in mermaid
+    assert "QuoteResponse" in mermaid
+    assert svg.startswith("<svg")
+    assert "API Analyzer entity relationships" in svg
 
     index = ChromaRepositoryIndex(tmp_path / "saved-rag", fake_embedder)
     try:
@@ -370,10 +367,13 @@ def test_enriched_openapi_keeps_empty_request_and_response_body_structure() -> N
     operation.responses = []
 
     document = yaml.safe_load(
-        yaml.safe_dump(_generate_openapi(model, [], [], [], "unavailable-provider"))
+        yaml.safe_dump(
+            _generate_openapi(model, [], [], [], "unavailable-provider"), sort_keys=False
+        )
     )
     rendered = document["paths"][operation.route][operation.method.lower()]
 
+    assert list(rendered).index("requestBody") < list(rendered).index("responses")
     assert rendered["requestBody"] == {
         "required": False,
         "description": "No request body model was discovered.",
@@ -429,7 +429,9 @@ def test_enriched_openapi_always_has_server_and_components() -> None:
     assert document["components"] == {"schemas": {}}
 
 
-def test_api_analyzer_stops_before_item_loops_when_provider_validation_fails() -> None:
+def test_api_analyzer_stops_before_item_loops_when_provider_validation_fails(
+    fake_embedder, tmp_path
+) -> None:
     class AuthenticationError(Exception):
         pass
 
@@ -471,8 +473,18 @@ def test_api_analyzer_stops_before_item_loops_when_provider_validation_fails() -
     )
     provider = FailingProvider()
 
+    index = ChromaRepositoryIndex(tmp_path / "saved-rag", fake_embedder)
+    try:
+        index.ingest(repository, model)
+    finally:
+        index.close()
+
     artifacts = run_api_analyzer_agent(
-        model.model_dump_json(by_alias=True).encode(), repository, provider
+        model.model_dump_json(by_alias=True).encode(),
+        repository,
+        provider,
+        rag_store_path=tmp_path / "saved-rag",
+        embedder=fake_embedder,
     )
     report = json.loads(artifacts["enrichment-report.json"])
 
