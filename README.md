@@ -8,7 +8,14 @@ This project will discover the structure and behavior of regional insurance APIs
 - [Current status](docs/STATUS.md)
 - [Next steps](docs/NEXT_STEPS.md)
 - [Architecture decisions](docs/DECISIONS.md)
+- [Production project structure](docs/PROJECT_STRUCTURE.md)
 - [Installation and user guide](docs/USER_GUIDE.md)
+- [Repository RAG and chunking example](docs/REPOSITORY_RAG.md)
+- [Detailed code-chunking guide](docs/CODE_CHUNKING.md)
+- [Artifact flow overview](docs/ARTIFACT_FLOW.md)
+- [Discovery Agent state and artifacts](docs/DISCOVERY_AGENT_STATE_AND_ARTIFACTS.md)
+- [Repository RAG saved index and handoff](docs/REPOSITORY_RAG_STATE_AND_ARTIFACTS.md)
+- [API Analyzer state and artifacts](docs/API_ANALYZER_STATE_AND_ARTIFACTS.md)
 
 Phase 1 deterministic discovery is complete and Phase 2 API analysis is in progress. A
 synthetic regional Quote API and OpenAPI input are available under
@@ -18,8 +25,9 @@ configuration, verification, and troubleshooting instructions.
 
 ## Quick start
 
-The Streamlit application runs deterministic repository discovery and exposes the Phase 2
-API Analyzer Agent after a successful Phase 1 run.
+The Streamlit application supports repository, OpenAPI, or combined discovery; a separate
+Repository RAG tab indexes code for source-linked retrieval. The API Analyzer Agent can reuse
+that saved index to interpret selected code or enrich a discovered API.
 
 ```powershell
 python -m venv .venv
@@ -60,10 +68,9 @@ Use an output directory outside the analyzed repository. Loading an MSBuild proj
 
 The command generates `discovery-model.json`, `api-catalog.json`, `data-model.json`, `relationship-graph.json`, `validation-enums.json`, and `lineage.json`.
 
-## Discovery MVP limitations
+## Current limits
 
-- The Roslyn slice supports ASP.NET Core controllers used by the selected fixture; minimal APIs and classic ASP.NET Web API are not yet supported.
-- OpenAPI discovery supports local references and `allOf`; external references, `oneOf`, and `anyOf` are reported or rejected.
-- Service call-path extraction (`CALLS`) remains optional and is not implemented.
-- OpenAPI inline enums are preserved as field constraints rather than promoted to named enums, which can produce a visible reconciliation warning.
-- The Streamlit page remains intake-only; run discovery through the CLI.
+- RAG call/reference links are syntax-derived candidates, not verified execution paths.
+- Code-to-business-meaning interpretation requires a working OpenAI key and source-sharing acknowledgement; generated claims require human review.
+- Deep persistence, integration, security, and call-path discovery are not yet accepted capabilities.
+- See [repository RAG](docs/REPOSITORY_RAG.md) for indexing limits, retrieval behavior, and the code-chunking example.

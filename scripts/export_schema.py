@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from canonical_model_generator.model import DiscoveryModel
+from canonical_model_generator.discovery_agent.model import DiscoveryModel
 from canonical_model_generator.normalization import NormalizedDiscoveryPortfolio
 
 

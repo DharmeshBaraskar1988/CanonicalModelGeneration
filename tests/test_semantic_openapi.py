@@ -1,12 +1,12 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
-from canonical_model_generator.openapi import discover_openapi
-from canonical_model_generator.reconcile import reconcile
-from canonical_model_generator.roslyn import extract_roslyn
-from canonical_model_generator.semantic_openapi import (
+from canonical_model_generator.api_analyzer.contracts import CodeClaim, CodeSemantic
+from canonical_model_generator.api_analyzer.inspect import inspect_retrieved_target
+from canonical_model_generator.api_analyzer.workflow import (
     AttributeSemantic,
     CapabilitySemantic,
     DomainSemantic,
@@ -15,8 +15,38 @@ from canonical_model_generator.semantic_openapi import (
     EnumSemantic,
     ResponseSemantic,
     _generate_openapi,
+    load_discovery_artifact,
     run_api_analyzer_agent,
 )
+from canonical_model_generator.discovery_agent.openapi import discover_openapi
+from canonical_model_generator.discovery_agent.reconcile import reconcile
+from canonical_model_generator.discovery_agent.roslyn import extract_roslyn
+from canonical_model_generator.repository_rag.index import ChromaRepositoryIndex
+
+
+def test_api_analyzer_boundary_requires_a_discovery_artifact() -> None:
+    with pytest.raises(TypeError, match="serialized Discovery Agent artifact"):
+        load_discovery_artifact(object())  # type: ignore[arg-type]
+
+
+def test_yaml_only_enrichment_reports_missing_implementation_without_indexing(monkeypatch):
+    def unexpected_index(*args, **kwargs):
+        raise AssertionError("YAML-only enrichment must not initialize code retrieval")
+
+    monkeypatch.setattr(
+        "canonical_model_generator.api_analyzer.workflow.ChromaRepositoryIndex", unexpected_index
+    )
+    model = discover_openapi(
+        Path("fixtures/RegionalQuoteApi/openapi/quote-api.yaml"), "IN", "quote"
+    )
+    outputs = run_api_analyzer_agent(
+        model.model_dump_json(by_alias=True), None, FakeAPIAnalyzerProvider()
+    )
+    report = json.loads(outputs["enrichment-report.json"])
+    assert report["status"] == "partial"
+    assert report["retrieval"]["status"] == "specification-only"
+    assert any("OpenAPI-only" in error for error in report["validationErrors"])
+    assert all(i["retrievedFragmentCount"] == 0 for i in report["investigations"])
 
 
 class FakeAPIAnalyzerProvider:
@@ -83,8 +113,33 @@ class FakeAPIAnalyzerProvider:
             confidence=0.95,
         )
 
+    def analyze_code(self, context: dict) -> CodeSemantic:
+        usage = next(
+            (
+                item
+                for item in context["sourceSnippets"]
+                if "InMemoryQuoteService.Create" in item["symbol"]
+                and "Premium = decimal.Round" in item["text"]
+            ),
+            context["sourceSnippets"][0],
+        )
+        return CodeSemantic(
+            summary="Retrieved code for the selected target",
+            role="Source-backed code explanation",
+            claims=[
+                CodeClaim(
+                    text="The method assigns a rounded premium from request coverage amount.",
+                    classification="observed",
+                    confidence=0.95,
+                    evidence_chunk_ids=[usage["chunkId"]],
+                )
+            ],
+        )
 
-def test_api_analyzer_embeds_semantics_and_retrieves_low_confidence_context() -> None:
+
+def test_api_analyzer_embeds_semantics_and_retrieves_low_confidence_context(
+    fake_embedder, tmp_path
+) -> None:
     repository = Path("fixtures/RegionalQuoteApi").resolve()
     roslyn = extract_roslyn(
         repository / "src/RegionalQuoteApi/RegionalQuoteApi.csproj",
@@ -100,7 +155,19 @@ def test_api_analyzer_embeds_semantics_and_retrieves_low_confidence_context() ->
     )
     model = reconcile(roslyn, openapi)
 
-    artifacts = run_api_analyzer_agent(model, repository, FakeAPIAnalyzerProvider())
+    index = ChromaRepositoryIndex(tmp_path / "saved-rag", fake_embedder)
+    try:
+        index.ingest(repository, model)
+    finally:
+        index.close()
+
+    artifacts = run_api_analyzer_agent(
+        model.model_dump_json(by_alias=True).encode(),
+        repository,
+        FakeAPIAnalyzerProvider(),
+        embedder=fake_embedder,
+        rag_store_path=tmp_path / "saved-rag",
+    )
     document = yaml.safe_load(artifacts["enriched-openapi.yaml"])
     report = json.loads(artifacts["enrichment-report.json"])
 
@@ -145,7 +212,67 @@ def test_api_analyzer_embeds_semantics_and_retrieves_low_confidence_context() ->
     assert all(item["retrievedFragmentCount"] > 0 for item in report["investigations"])
     assert not report["needsMoreContextTargets"]
     assert report["retrieval"]["provider"] == "chroma"
+    assert report["retrieval"]["storage"] == "persistent-local"
     assert report["retrieval"]["chunksIndexed"] > 0
+
+    index = ChromaRepositoryIndex(tmp_path / "saved-rag", fake_embedder)
+    try:
+        entity = next(item for item in model.entities if item.original_name == "QuoteResponse")
+        field = next(item for item in entity.attributes if item.original_name == "Premium")
+        focused = inspect_retrieved_target(
+            model.model_dump_json(by_alias=True), index, field.id, FakeAPIAnalyzerProvider()
+        )
+        assert focused["status"] == "inferred"
+        assert focused["semantic"]["owningEntity"] == "QuoteResponse"
+        assert focused["semantic"]["businessMeaning"]
+        assert focused["citations"][0]["retrievalReason"] == "exact-lineage"
+        assert focused["citations"][0]["path"].endswith("QuoteResponse.cs")
+        assert focused["citations"][0]["startLine"] == 9
+        assert focused["codeAnalysis"]["claims"][0]["classification"] == "observed"
+        usage_id = focused["codeAnalysis"]["claims"][0]["evidenceChunkIds"][0]
+        usage = next(item for item in focused["citations"] if item["chunkId"] == usage_id)
+        assert "InMemoryQuoteService.Create" in usage["symbol"]
+        assert usage["startLine"] == 10
+
+        class InvalidCitationProvider(FakeAPIAnalyzerProvider):
+            def analyze_code(self, context: dict) -> CodeSemantic:
+                result = super().analyze_code(context)
+                return result.model_copy(
+                    update={
+                        "claims": [
+                            result.claims[0].model_copy(
+                                update={"evidence_chunk_ids": ["not-retrieved"]}
+                            )
+                        ]
+                    }
+                )
+
+        with pytest.raises(RuntimeError, match="citation validity|target structure"):
+            inspect_retrieved_target(
+                model.model_dump_json(by_alias=True), index, field.id, InvalidCitationProvider()
+            )
+
+        class NoCodeClaimsProvider(FakeAPIAnalyzerProvider):
+            def analyze_code(self, context: dict) -> CodeSemantic:
+                return CodeSemantic(
+                    summary="Meaning unresolved", role="Unknown", gaps=["Usage unclear"]
+                )
+
+        partial = inspect_retrieved_target(
+            model.model_dump_json(by_alias=True), index, field.id, NoCodeClaimsProvider()
+        )
+        assert partial["status"] == "partial"
+        assert partial["codeEvidenceStatus"] == "insufficient"
+        assert any("No source-grounded" in gap for gap in partial["gaps"])
+        with pytest.raises(ValueError, match="does not match"):
+            inspect_retrieved_target(
+                model.model_copy(update={"system": "other"}).model_dump_json(by_alias=True),
+                index,
+                field.id,
+                FakeAPIAnalyzerProvider(),
+            )
+    finally:
+        index.close()
 
 
 def test_partial_openapi_keeps_parameter_and_response_model_details() -> None:
@@ -195,6 +322,113 @@ def test_partial_openapi_keeps_parameter_and_response_model_details() -> None:
     ]
 
 
+def test_reconciliation_restores_openapi_request_and_failure_responses() -> None:
+    repository = Path("fixtures/RegionalQuoteApi").resolve()
+    roslyn = extract_roslyn(
+        repository / "src/RegionalQuoteApi/RegionalQuoteApi.csproj",
+        repository,
+        "IN",
+        "regional-quote-api-fixture",
+    )
+    # Simulate a repository extractor that found routes but did not establish contract details.
+    for operation in roslyn.operations:
+        operation.parameters = []
+        operation.request_entity_id = None
+        operation.responses = []
+    model = reconcile(
+        roslyn,
+        discover_openapi(
+            repository / "openapi/quote-api.yaml",
+            "IN",
+            "regional-quote-api-fixture",
+            repository,
+        ),
+    )
+
+    document = _generate_openapi(model, [], [], [], "unavailable-provider")
+    create_quote = document["paths"]["/api/v1/quotes"]["post"]
+    get_quote = document["paths"]["/api/v1/quotes/{quoteId}"]["get"]
+    assert create_quote["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/CreateQuoteRequest"
+    }
+    assert create_quote["responses"]["400"]["description"] == "Invalid request"
+    assert get_quote["parameters"][0]["name"] == "quoteId"
+    assert get_quote["responses"]["404"]["description"] == "Quote not found"
+
+
+def test_enriched_openapi_keeps_empty_request_and_response_body_structure() -> None:
+    repository = Path("fixtures/RegionalQuoteApi").resolve()
+    model = extract_roslyn(
+        repository / "src/RegionalQuoteApi/RegionalQuoteApi.csproj",
+        repository,
+        "IN",
+        "regional-quote-api-fixture",
+    )
+    operation = model.operations[0]
+    operation.parameters = []
+    operation.request_entity_id = None
+    operation.responses = []
+
+    document = yaml.safe_load(
+        yaml.safe_dump(_generate_openapi(model, [], [], [], "unavailable-provider"))
+    )
+    rendered = document["paths"][operation.route][operation.method.lower()]
+
+    assert rendered["requestBody"] == {
+        "required": False,
+        "description": "No request body model was discovered.",
+        "content": {"application/json": {"schema": {}}},
+        "x-source": rendered["requestBody"]["x-source"],
+    }
+    assert rendered["responses"]["default"] == {
+        "description": "No response body model was discovered.",
+        "content": {"application/json": {"schema": {}}},
+        "x-source": rendered["responses"]["default"]["x-source"],
+    }
+
+
+def test_enriched_openapi_keeps_empty_body_for_response_without_model() -> None:
+    repository = Path("fixtures/RegionalQuoteApi").resolve()
+    model = extract_roslyn(
+        repository / "src/RegionalQuoteApi/RegionalQuoteApi.csproj",
+        repository,
+        "IN",
+        "regional-quote-api-fixture",
+    )
+    operation = model.operations[0]
+    operation.responses[0].entity_id = None
+    operation.responses[0].type = None
+
+    document = _generate_openapi(model, [], [], [], "unavailable-provider")
+    rendered_response = document["paths"][operation.route][operation.method.lower()]["responses"][
+        str(operation.responses[0].status_code)
+    ]
+
+    assert rendered_response["content"] == {"application/json": {"schema": {}}}
+
+
+def test_enriched_openapi_always_has_server_and_components() -> None:
+    repository = Path("fixtures/RegionalQuoteApi").resolve()
+    model = extract_roslyn(
+        repository / "src/RegionalQuoteApi/RegionalQuoteApi.csproj",
+        repository,
+        "IN",
+        "regional-quote-api-fixture",
+    )
+    model.entities = []
+    model.enums = []
+
+    document = _generate_openapi(model, [], [], [], "unavailable-provider")
+
+    assert document["servers"] == [
+        {
+            "url": "/",
+            "description": "Relative API root; no deployment server was discovered.",
+        }
+    ]
+    assert document["components"] == {"schemas": {}}
+
+
 def test_api_analyzer_stops_before_item_loops_when_provider_validation_fails() -> None:
     class AuthenticationError(Exception):
         pass
@@ -237,7 +471,9 @@ def test_api_analyzer_stops_before_item_loops_when_provider_validation_fails() -
     )
     provider = FailingProvider()
 
-    artifacts = run_api_analyzer_agent(model, repository, provider)
+    artifacts = run_api_analyzer_agent(
+        model.model_dump_json(by_alias=True).encode(), repository, provider
+    )
     report = json.loads(artifacts["enrichment-report.json"])
 
     assert provider.endpoint_calls == 0

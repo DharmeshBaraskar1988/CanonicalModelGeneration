@@ -1,11 +1,26 @@
 # Next Steps
 
-Last updated: 2026-09-24
+Last updated: 2026-09-28
 
 The first unchecked item is the recommended next action.
 
 ## Immediate
 
+- [x] **NS-P2-05 / P2.4e:** Always emit `servers` and `components.schemas` in enriched OpenAPI, with a deterministic relative server when no deployment URL is available.
+- [x] **NS-P2-04 / P2.4d:** Keep request and response body structure present in enriched OpenAPI by emitting an empty JSON schema when no contract model is discovered.
+- [x] **NS-UI-25 / P2.6j:** Persist trusted application profiles locally and add a previous-application selector that restores the repository, Discovery artifacts, RAG association, and Phase 2 output after restart.
+- [x] **NS-UI-24 / P2.6i:** Add review-only, per-entity LLM normalization for entity and attribute names/descriptions on the Regional catalog page, with consent, schema validation, and side-by-side proposal columns.
+- [x] **NS-UI-23 / P2.6h:** Add API Analyzer descriptions and business metadata to regional entity, field, and endpoint tree views, with explicit pending values before enrichment.
+- [x] **NS-UI-22 / P2.6g:** Replace the regional domain/capability table with a Region → Domain → Capability → API → Endpoint tree, retaining pending classifications explicitly.
+- [x] **NS-UI-21 / P2.6f:** Replace the regional model-mapping table with a Region → API → Model tree that expands into endpoint usages and model fields.
+- [x] **NS-UI-20 / P2.6e:** Add a regional catalog page with region and API filters, an all-APIs view, contract-model-to-endpoint mappings, and domain/capability endpoint inventory across completed in-session applications.
+- [x] **NS-P2-03 / P2.4c-P2.6d:** Preserve OpenAPI request, response, and failure-status details during reconciliation and provide a retry action for the selected API Analyzer application profile.
+- [x] **NS-UI-19 / P2.6c:** Isolate each Discovery upload and its freshly built RAG index in the Streamlit session; remove cross-upload saved-index selection so API Analyzer uses only the selected application's index.
+- [x] **NS-RAG-04 / R1.9:** Fix Roslyn syntax-node identity for top-level statements and nested local functions that share a source span; verify against the reported eShopOnWeb snapshot.
+- [x] **NS-RAG-03 / R1.8:** Fix duplicate Chroma IDs for repeated long-line windows, retain both retrieval occurrences, and reject any remaining collision before upsert. The reported repository itself was not available for a live retry.
+- [x] **NS-RAG-01 / R1.1-R1.6:** Implement repository-or-YAML intake and reusable repository RAG: Roslyn hierarchy, typed relationship candidates, selectable Sentence Transformer/OpenAI embeddings, persistent Chroma, endpoint/entity/attribute retrieval, and grounded API Analyzer interpretation.
+- [x] **NS-RAG-02 / R1.7:** Require focused target interpretation to explain retrieved code usages with claim-level chunk citations and explicit partial status when code meaning cannot be grounded.
+- [x] **NS-UI-18 / P2.6b:** Make the Discovery → RAG → API Analyzer path selectable by in-session region/application/repository profile, preserve the matching RAG index, and show actionable Phase 2 readiness requirements.
 - [x] **NS-01 / M0.1-M0.3:** Add or identify one representative regional Quote API and record its solution path, .NET SDK version, region name, system name, and OpenAPI path.
 - [x] **NS-UI-01 / M0.6:** Add a safe intake-only Streamlit page for repository and OpenAPI upload, inventory preview, and manifest download.
 - [x] **NS-02 / M0.4-M0.5:** Scaffold the Python and .NET projects with empty passing test suites.
@@ -40,6 +55,9 @@ The first unchecked item is the recommended next action.
 - [x] **NS-P2-01 / P2.1-P2.7a:** Implement the API Analyzer Agent with taxonomy-preferred or repository-derived domain/capability classification, local Chroma ingestion and bounded retrieval, endpoint/entity/attribute/enum semantics, fixed OpenAPI extensions, provenance, validation, and UI artifacts.
 - [x] **NS-P2-01a / P2.4a:** Preserve parameter/request details and source lineage in enriched OpenAPI, explicitly identify response contract models, and retain deterministic ViewModel/field descriptions during partial semantic runs.
 - [x] **NS-P2-01b / P2.4b:** Expand each response-model extension with its component reference and described direct attributes, and correct partial-run ViewModel component descriptions.
+- [x] **NS-UI-17 / P2.6a:** Improve the Discovery Agent region and application-details experience with guided inputs, separated source uploads, and a completed-run application summary.
+- [x] **NS-PROD-01 / P2.7b:** Separate API Analyzer contracts, prompts, provider adapters, and bounded tools into production namespaces; document the source/generated-file boundary and retain compatibility imports.
+- [x] **NS-PROD-02 / P2.7c:** Create explicit `discovery_agent/` and `api_analyzer/` package boundaries and require serialized `discovery-model.json` as the only runtime handoff between them.
 - [ ] **NS-P2-02 / P2.8:** Replace the currently rejected OpenAI API key with an active approved key, restart Streamlit, run Phase 2 against an approved real repository, review domain/capability and all generated semantics in `enriched-openapi.yaml`, and record acceptance evidence.
 - [ ] **NS-DEEP-01:** Implement evidence-linked call paths, mappings, persistence, integrations, security, shared-code, and Razor Page discovery before claiming a deep repository analysis.
 - [ ] **NS-09:** Run the accepted workflow against an approved real regional Quote API before production use.

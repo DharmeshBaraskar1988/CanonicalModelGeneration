@@ -7,7 +7,12 @@ from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
-from canonical_model_generator.model import ContractModel, DiscoveryModel, TypeKind, TypeRef
+from canonical_model_generator.discovery_agent.model import (
+    ContractModel,
+    DiscoveryModel,
+    TypeKind,
+    TypeRef,
+)
 
 
 class SourceLocation(ContractModel):

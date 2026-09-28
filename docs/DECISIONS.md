@@ -333,6 +333,200 @@ Retain only user-authored, endpoint-reachable classes ending in `ViewModel`, `Re
 - DTOs can remain visible only as unresolved field type text when a retained contract declares such a property; they are not emitted as Data Model entities.
 - Roslyn source lineage remains mandatory, preventing external .NET/library classes from becoming entities.
 
+## ADR-018 - Separate agent packages with an artifact-only handoff
+
+- Date: 2026-09-25
+- Status: Accepted
+
+### Context
+
+Phase 1 Discovery and Phase 2 API Analyzer had different responsibilities, but Discovery modules
+were located at the package root and the analyzer entry point accepted an in-memory DiscoveryModel.
+This obscured the agent boundary and allowed callers to couple the workflows through Python state.
+
+### Decision
+
+Place deterministic Phase 1 implementation in `discovery_agent/` and semantic Phase 2 implementation
+in `api_analyzer/`. The only runtime handoff is serialized `discovery-model.json` content (bytes, a
+file path, or its decoded mapping). Phase 2 validates that artifact before constructing its private
+graph state. Keep thin root-level imports temporarily for source compatibility; they are not agent
+handoff APIs.
+
+### Consequences
+
+- The two agents are visible as separate production folders with independent workflows.
+- Phase 2 cannot receive Phase 1 LangGraph state or a live DiscoveryModel instance through its public
+  entry point.
+- Artifact validation detects an invalid handoff before semantic analysis or provider calls.
+- Compatibility imports can be removed in a future breaking release after downstream callers migrate.
+
+## ADR-019 - Repository or specification intake and reusable hierarchical RAG
+
+- Date: 2026-09-26
+- Status: Accepted; amends ADR-015 and ADR-018
+
+### Context
+
+Operators may have a .NET repository, an OpenAPI document, or both. Fixed line windows and hashed
+vectors do not provide the requested code hierarchy or semantic embeddings, and an ephemeral
+index cannot be inspected and reused independently of semantic generation.
+
+### Decision
+
+Allow either discovery input independently. Repository discovery keeps the accepted endpoint
+contract scope; specification-only discovery preserves the document's schemas without requiring
+Roslyn lineage. Missing implementation evidence remains explicit in specification-only enrichment.
+
+Create `repository_rag/` as a service separate from both agents. Parse bounded redacted C# text
+with a syntax-only Roslyn sidecar, producing file/type/member/top-level chunks and bounded child
+windows. Preserve source hashes, relative spans, parent-child links, DiscoveryModel relationships,
+and name-based call/reference/inheritance candidates. Candidate links are not semantic call paths;
+ambiguous matches and unresolved references remain recorded.
+
+Use selectable local Sentence Transformer embeddings or OpenAI embeddings (including requested
+`text-embedding-ada-002`). Cloud embedding requires explicit acknowledgement for all included
+redacted chunks. Local MiniLM uses a pinned model revision and pooled token windows. Never silently
+fall back to hash vectors. Store each snapshot/profile in local Chroma with a versioned manifest.
+
+Retrieve exact subject lineage first, then combine identifier lexical ranking and vector ranking,
+and expand bounded parent/relationship context. Preserve separate fully qualified symbols and
+overload parameter lists. Analyzer reuse requires source hash and discovery artifact agreement.
+
+### Consequences
+
+- Persistent indexes live under ignored `.rag/` in the UI; users can reopen them with the same inputs
+  or use the standalone CLI. A downloaded manifest alone does not include the Chroma database.
+- Discovery remains deterministic; embeddings run as a distinct explicit RAG action.
+- Source-only uploads can build a syntax index independently; DiscoveryModel enables exact target
+  selectors and ID bindings when available.
+- API Analyzer continues to receive serialized artifacts: DiscoveryModel plus an optional local
+  index artifact reference. No agent graph state is exchanged.
+- Syntax references include unresolved/external names and cannot prove runtime dispatch, persistence
+  behavior, security, or business semantics. Deep semantic extraction remains deferred.
+- User-requested RAG work takes priority over P2.8 live semantic acceptance.
+
+## ADR-020 - Explain selected retrieval targets with grounded semantics
+
+- Date: 2026-09-26
+- Status: Accepted
+
+### Context
+
+Code retrieval finds relevant source but does not itself explain a contract model, attribute or
+endpoint. Operators need to inspect one selected target's meaning before running the full API
+Analyzer, while keeping code observations and inferred business descriptions distinct.
+
+### Decision
+
+Add focused semantic inspection to the API Analyzer. It accepts the serialized DiscoveryModel,
+an exact target ID, the saved RAG index and the existing provider contract. It builds bounded
+context from exact lineage and related chunks, then uses the same schema-validated endpoint,
+entity-batch or enum analysis as the full agent. An attribute inspection validates the entire
+owning entity result and returns the chosen field's meaning. Results include confidence,
+source spans and gaps; a target without an exact source binding remains unknown. The UI invokes
+this only after an explicit source-sharing acknowledgement.
+For a free code query without a DiscoveryModel target, use a separate structured code-analysis
+contract. Ground every observed or inferred claim in a retrieved chunk ID and reject citations
+outside the context; keep unknown claims and gaps explicit.
+
+### Consequences
+
+- Embedding similarity ranks code; it does not count as a semantic conclusion.
+- Semantic descriptions remain inferred and human-reviewable. Cited snippets are context
+  considered by the provider, not proof of every sentence in its response.
+- The provider cannot add or rename structural endpoints or fields during focused inspection.
+- Live interpretation depends on a working OpenAI API key. Offline behavior is fixture-tested
+  through the provider port.
+
+## ADR-021 - Select matching application inputs for Phase 2 within a browser session
+
+- Date: 2026-09-27
+- Status: Accepted
+
+### Context
+
+Running Discovery and Repository RAG did not make the selected region, application, repository
+archive, and saved index explicit at the API Analyzer boundary. A single active session result
+could also be replaced by the next Discovery run, leaving users unsure which repository Phase 2
+would analyze.
+
+### Decision
+
+Keep completed application profiles separate in Streamlit session state. Identify each profile
+by its validated Discovery artifact and repository bytes; show region, application name, and ZIP
+name in the Phase 2 selector. Restore that profile's serialized Discovery artifact, repository
+archive, RAG path, and Phase 2 outputs together. Rebuild/reopen of its RAG index invalidates its
+previous Phase 2 output. Require an index for repository-based UI enrichment, show all missing
+run requirements, and allow a password-masked API key override held only in the session.
+
+### Consequences
+
+- The UI cannot silently use another selected repository's RAG path or Discovery artifact.
+- Uploaded ZIP bytes remain session-only; this change does not create a persistent repository
+  registry. A browser-session or server restart requires rerunning Discovery and reopening the
+  saved index with the same ZIP.
+- Presence of an API key only enables a run. Provider access and semantic accuracy still require
+  preflight and approved live review.
+
+## ADR-022 - Present a read-only regional API catalog before regional canonical mapping
+
+- Date: 2026-09-27
+- Status: Accepted
+
+### Context
+
+Operators need to inspect all Claim, Quote, and other APIs in one region, or focus on one API, while comparing endpoint contract models and API Analyzer domain/capability results. Platform Phase 6 regional-to-canonical mapping is not implemented.
+
+### Decision
+
+Add a read-only Streamlit regional catalog backed only by completed in-session application profiles. Provide a region selector, an all-APIs or single-API selector, an expandable Region → API → Model tree for deterministic endpoint-contract links and fields, and an expandable Region → Domain → Capability → API → Endpoint tree for Phase 2 classifications. Include the available API Analyzer descriptions, business concepts or purposes, and confidence values on entity, field, and endpoint nodes. Label missing classifications or descriptions as awaiting API Analyzer output and do not infer or present canonical mappings.
+
+### Consequences
+
+- Multiple applications in EU, US, or a custom region can be compared without merging their source artifacts.
+- Discovery remains the authority for endpoints and contract mappings; API Analyzer artifacts remain the authority for domain and capability.
+- The page does not satisfy or pre-implement Phase 6 regional-to-canonical mapping.
+
+## ADR-023 - Keep single-API normalization as a review-only proposal
+
+- Date: 2026-09-27
+- Status: Accepted
+
+### Context
+
+Operators want clearer, normalized entity and attribute names and descriptions before the later cross-API comparison and canonicalization work. LLM proposals must not overwrite deterministic source structure or be mistaken for approved canonical mappings.
+
+### Decision
+
+Allow one explicitly consented Structured Outputs call per selected entity on the Regional catalog page. Send only that regional entity, its complete attribute structure, and available API Analyzer semantics. Require the response to preserve every entity and attribute ID and original name. Store valid proposals only in Streamlit session state and display normalized names, descriptions, and confidence beside the originals. Do not mutate Discovery, enriched OpenAPI, or saved artifacts, and do not compare APIs in this step.
+
+### Consequences
+
+- Operators can review clearer regional terminology without changing structural truth.
+- A malformed response that adds, removes, or remaps an attribute is rejected.
+- Proposals disappear with the browser session and are not approvals.
+- Cross-API comparison and canonical matching remain separate later work.
+
+## ADR-024 - Persist trusted application history locally
+
+- Date: 2026-09-27
+- Status: Accepted; amends ADR-021
+
+### Context
+
+Session-only profiles prevent operators from returning to a previously analyzed repository after a browser or Streamlit restart. Re-uploading and rerunning Discovery also loses the convenient association between the repository, its artifacts, its RAG index, and Phase 2 output.
+
+### Decision
+
+Persist each trusted application profile under `.applications/<run-id>/`, which remains ignored by source control. Store the original trusted repository ZIP when supplied, the validated Discovery artifact and five presentation artifacts, profile and project metadata, the associated RAG path/manifest, and Phase 2 artifacts/errors. Load valid records at startup and expose an explicit previous-application selector. Keep runs isolated by UUID and ignore incomplete or invalid record directories.
+
+### Consequences
+
+- Users can resume work on earlier repositories without re-uploading them.
+- Repository source is now intentionally retained on local disk instead of only in browser session memory; operators must protect or remove `.applications/` according to their data-handling policy.
+- Removing `.applications/<run-id>/` removes that history record but does not automatically remove a separately stored `.rag/` index.
+- API keys and source-sharing consent are never persisted.
+
 ## ADR template
 
 Copy this section for future decisions:

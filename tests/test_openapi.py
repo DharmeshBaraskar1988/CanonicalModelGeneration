@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from canonical_model_generator.openapi import discover_openapi
+from canonical_model_generator.discovery_agent.openapi import discover_openapi
 
 
 def test_openapi_fixture_discovers_quote_contract() -> None:

@@ -1,8 +1,31 @@
 # Canonical Model Generator - Implementation Plan
 
-Last updated: 2026-09-24  
+Last updated: 2026-09-27
 Current release: Phase 2 API Analyzer Agent  
 Overall status: In progress
+
+## Plan amendment - Repository RAG (2026-09-26)
+
+Status: Complete; live OpenAI semantic accuracy remains a separate Phase 2 acceptance item.
+
+- [x] **R1.1** Accept repository ZIP, OpenAPI YAML/JSON, or both; preserve specification-only coverage.
+- [x] **R1.2** Extract file/type/member hierarchy using Roslyn syntax, with stable source spans, parent-child links, typed reference candidates, explicit ambiguity, bounded chunk splitting and redaction.
+- [x] **R1.3** Provide local Sentence Transformer and OpenAI `text-embedding-ada-002`/embedding-3 model adapters selectable in the UI, with explicit cloud source sharing.
+- [x] **R1.4** Persist snapshot/model-specific Chroma indexes and versioned manifests; retrieve endpoint/entity/attribute context using exact lineage, lexical/vector ranking, and parent/relationship expansion.
+- [x] **R1.5** Add an independent UI indexing/retrieval flow, reuse its artifact in API Analyzer, and verify hierarchy, attribution, persistence, isolation and both input paths.
+- [x] **R1.6** Interpret a selected Discovery target or free code query using retrieved, cited source chunks; reject unsupported citations and distinguish structural facts from inferred meaning.
+- [x] **R1.7** For focused target interpretation, inspect retrieved code usages as separate observed/inferred claims with validated chunk citations; mark a result partial when no grounded code claim is available.
+- [x] **R1.8** Correct repeated long-line window identity collisions, preserve distinct retrieval occurrences, and fail before Chroma upsert if any duplicate chunk identity remains. Verified with regression tests and repository-RAG indexing.
+- [x] **R1.9** Correct Roslyn syntax identities for a `GlobalStatement` and nested `LocalFunctionStatement` with the same span, preserving parent-child lineage and both retrieval results. Verified against the reported eShopOnWeb source snapshot and Chroma regression test.
+- [x] **P2.6c** Isolate each Streamlit Discovery submission and newly built RAG index; do not expose or reuse indexes from other uploads, and pass only the selected application's index to API Analyzer.
+- [x] **P2.4c / P2.6d** Retain OpenAPI request/response/failure details when reconciling repository evidence, and allow the selected API Analyzer application profile to be rerun after success or failure.
+- [x] **P2.4d** Keep request and response body structure present in enriched OpenAPI by emitting an empty JSON schema when no contract model is discovered.
+- [x] **P2.4e** Always emit the enriched OpenAPI `servers` and `components.schemas` structures, using a deterministic relative server when no deployment URL is available.
+
+Acceptance: exact subject retrieval returns its owning source and cited context; duplicate symbol
+names are not silently conflated; all limits and unresolved reference candidates are visible;
+reopening an index preserves results and rejects mismatched source/model inputs. Local model
+execution and offline adapter contracts are verified separately from live OpenAI access.
 
 ## 1. Objective
 
@@ -301,8 +324,18 @@ Status: In progress
 - [x] **P2.4** Generate OpenAPI 3.0 paths, parameters, request bodies, responses, schemas, types, enums, and validations from Phase 1 facts, enriched with the fixed `x-domain`, `x-capability`, `x-business-concept`, `x-business-purpose`, `x-source`, and `x-confidence` vocabulary.
 - [x] **P2.5** Add one bounded low-confidence code-retrieval/re-analysis round, confidence bands, OpenAPI reparsing, coverage accounting, explicit gaps, and evidence mapping.
 - [x] **P2.6** Add a gated Streamlit API Analyzer Agent with source-sharing acknowledgement, model selection, discovered-versus-enriched coverage metrics, live loop progress, actionable provider errors, previews, and individual or bundled downloads.
+- [x] **P2.6a** Improve regional application intake with a guided region selector, clear application identity, separated source inputs, and a completed-run profile summary.
+- [x] **P2.6b** Allow selection of a completed in-session application by region, application name, and repository ZIP; restore its exact Discovery/RAG inputs, show Phase 2 readiness requirements, and accept a session-only key override.
+- [x] **P2.6e** Add a read-only regional catalog over completed in-session applications. Filter by region and either all APIs or one API; show endpoint contract-model mappings separately from API Analyzer domain/capability classifications without claiming Phase 6 canonical regional mappings.
+- [x] **P2.6f** Present model mappings as an expandable Region → API → Model hierarchy, with request/response endpoint mappings and field details beneath every model.
+- [x] **P2.6g** Present classifications as an expandable Region → Domain → Capability → API → Endpoint hierarchy, preserving unclassified/pending endpoints as explicit branches.
+- [x] **P2.6h** Enrich regional entity, attribute, and endpoint views with API Analyzer summary, description, business concept or purpose, and confidence fields while keeping missing semantic values explicit.
+- [x] **P2.6i** Allow an explicitly consented OpenAI Structured Outputs call to propose normalized names and descriptions for one regional entity and all its attributes. Preserve every structural ID and original name, store results only in browser session state, and present proposals separately from authoritative Discovery/API Analyzer data.
+- [x] **P2.6j** Persist each trusted application run under an ignored local run-ID directory and allow users to reopen previous applications after restart with their repository ZIP, Discovery artifacts, RAG association, and Phase 2 artifacts restored together.
 - [x] **P2.7** Orchestrate provider preflight, context building, endpoint classification/enrichment, entity/attribute batching, enum enrichment, rendering, and validation with LangGraph.
 - [x] **P2.7a** Ingest bounded redacted repository chunks into an ephemeral local Chroma index, retrieve target-specific evidence before semantic decisions, allow evidence-backed controller/module domains and action capabilities, emit one domain tag per operation, and resolve known Phase 1 CLR type names before marking a type unresolved.
+- [x] **P2.7b** Establish production module boundaries for API Analyzer contracts, versioned prompts, provider adapters, and bounded tools while preserving the existing public workflow API.
+- [x] **P2.7c** Separate Discovery Agent and API Analyzer implementation folders and enforce serialized `discovery-model.json` as their runtime handoff contract; retain temporary root-level compatibility imports.
 - [x] **P2.4a** Preserve described and sourced non-body parameters and OpenAPI 3 request bodies, identify response contract models explicitly, and emit deterministic structural descriptions for response ViewModels and fields when semantic enrichment is partial.
 - [x] **P2.4b** Include component references and described direct attributes in each response-model extension while retaining standard OpenAPI response `$ref` schemas.
 - [ ] **P2.8** Complete live-model acceptance against an approved real repository and manually review semantic accuracy.

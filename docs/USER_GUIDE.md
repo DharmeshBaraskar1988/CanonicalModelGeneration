@@ -3,6 +3,8 @@
 This guide explains how to install the prerequisites, restore the .NET and Python
 dependencies, run the application, and verify a local setup.
 
+For repository or YAML input and code retrieval, see [Repository RAG](REPOSITORY_RAG.md).
+
 ## 1. Prerequisites
 
 Install the following tools:
@@ -98,8 +100,10 @@ OPENAI_MODEL=your-approved-model
 ```
 
 The `.env` file is ignored by Git. Do not commit API keys or place them in uploaded
-repositories. The UI requires explicit acknowledgement before bounded, redacted source
-context is sent to OpenAI.
+repositories. The UI requires explicit acknowledgement before specification details or bounded,
+redacted code context is sent to OpenAI. The API Analyzer tab also accepts a password-masked,
+session-only key override when the configured key is missing or rejected; it is not written to
+an artifact.
 
 ## 6. Run the Streamlit application
 
@@ -120,14 +124,31 @@ After successful discovery, the UI provides these operator-facing artifacts:
 - Validation and Enums
 - Lineage
 
-The API Analyzer Agent tab becomes available after Phase 1 succeeds. It can generate an
-enriched OpenAPI document and semantic metadata when a valid OpenAI configuration is
-present.
+Run the three tabs in order:
+
+1. In **Discovery Agent**, choose the region and application name, then upload a repository ZIP,
+   an OpenAPI document, or both. A successful run records the application profile in this browser
+   session.
+2. For a repository, open **Repository RAG** and build its index. Each build creates a fresh,
+   isolated index for the currently selected upload. YAML-only runs skip this step.
+3. In **Phase 2 API Analyzer**, select the completed application by name, region, and repository
+   ZIP. Check its RAG status, provide a valid OpenAI key (or session override), choose the model,
+   and acknowledge source sharing. The page lists any missing requirements before enabling
+   **Run API Analyzer Agent**. After a completed or failed run, the same selected application
+   shows **Run API Analyzer again for selected application**; no new upload is required.
+
+The application selector restores that run's Discovery artifact, repository ZIP, and RAG index;
+it does not mix results from different repositories. Every Discovery submission starts a new
+session run, even if the upload is identical to a previous one, and does not inherit an old index.
+Completed application profiles and uploaded ZIPs are held only in the current Streamlit browser
+session. If that session ends or the server restarts, rerun Discovery and build a fresh index to
+continue. An available key is not proof it is valid: the Analyzer checks provider access when the
+run starts.
 
 ## 7. Run deterministic discovery from the CLI
 
-The current CLI requires a repository, a `.csproj`, an OpenAPI document, and an output
-directory. This example analyzes the included Quote API fixture:
+The CLI accepts a repository/project, an OpenAPI document, or both, plus an output directory.
+This example analyzes the included Quote API fixture using both sources:
 
 ```powershell
 .\.venv\Scripts\python.exe -m canonical_model_generator.cli `
@@ -187,5 +208,6 @@ Then upgrade pip and retry the editable installation.
 
 ### Phase 2 reports an authentication error
 
-Check that `.env` contains an active, approved `OPENAI_API_KEY`, restart Streamlit, and
-retry the provider preflight. Phase 1 discovery remains usable without the key.
+Use the API Analyzer's session-only key override or replace `.env` with an active, approved
+`OPENAI_API_KEY`, then retry. Phase 1 Discovery and local Repository RAG remain usable without
+an OpenAI key.

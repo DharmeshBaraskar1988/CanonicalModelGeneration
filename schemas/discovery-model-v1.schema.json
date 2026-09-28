@@ -440,6 +440,19 @@
     "Response": {
       "additionalProperties": false,
       "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
         "entityId": {
           "anyOf": [
             {
@@ -461,6 +474,17 @@
           "minimum": 100,
           "title": "Statuscode",
           "type": "integer"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TypeRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [

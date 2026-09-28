@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from canonical_model_generator.openapi import discover_openapi
-from canonical_model_generator.reconcile import reconcile
-from canonical_model_generator.roslyn import extract_roslyn
+from canonical_model_generator.discovery_agent.openapi import discover_openapi
+from canonical_model_generator.discovery_agent.reconcile import reconcile
+from canonical_model_generator.discovery_agent.roslyn import extract_roslyn
 
 
 def source_models():

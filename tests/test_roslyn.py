@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from canonical_model_generator.roslyn import extract_roslyn
+from canonical_model_generator.discovery_agent.roslyn import extract_roslyn
 
 
 def test_roslyn_fixture_discovers_quote_contract() -> None:

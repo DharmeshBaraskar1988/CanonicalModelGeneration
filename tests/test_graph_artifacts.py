@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from canonical_model_generator.graph import run_discovery
+from canonical_model_generator.discovery_agent.workflow import run_discovery
 
 
 def test_graph_runs_complete_fixture_and_generates_valid_artifacts(tmp_path: Path) -> None:

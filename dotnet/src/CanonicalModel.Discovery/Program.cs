@@ -10,6 +10,12 @@ internal static class Program
             .Chunk(2)
             .Where(pair => pair.Length == 2 && pair[0].StartsWith("--", StringComparison.Ordinal))
             .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.Ordinal);
+        if (options.TryGetValue("--chunk-input", out var chunkInput) &&
+            options.TryGetValue("--output", out var chunkOutput))
+        {
+            await CodeHierarchy.WriteAsync(chunkInput, chunkOutput);
+            return 0;
+        }
         if (!options.TryGetValue("--project", out var project) ||
             !options.TryGetValue("--output", out var output))
         {

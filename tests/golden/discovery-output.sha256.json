@@ -10,9 +10,9 @@
     "validations": 13
   },
   "files": {
-    "api-catalog.json": "87cffc46ceff791772b0810875eb4e58591a65a3cdb1adcefb795e430beb4bf9",
+    "api-catalog.json": "9bb4214b0bcbabe6d65628d21fb117151010e8af2ce858a30f280cbde6b2b50f",
     "data-model.json": "46d711530160b8c7fd542f57f77d080932d72f69775db2001d5ab01c4619eb5f",
-    "discovery-model.json": "8d492dd62315af2e842abdc014daca27151c834b1c779794f54183894ece8cde",
+    "discovery-model.json": "391cd01f30aa24e6e97f969bad5ba66f6c20b86e25185b2dad91f1a457c30c91",
     "lineage.json": "41dcd6e4a265d7374153a8e506833aaa13db5dff8da08d3d3707d624ef487fa3",
     "relationship-graph.json": "50579f4bbd5d480abaf38d16e1d5afb93783384a18dfd8e2c409f7d219f19e33",
     "validation-enums.json": "9a788c5a157a85b6a08f6c2e37e6ca17dcac0f78a47bb422c883cd40e9eb7d29"

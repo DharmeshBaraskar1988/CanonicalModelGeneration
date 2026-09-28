@@ -4,8 +4,15 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from canonical_model_generator.model import DiscoveryModel, Lineage, RelationshipKind, stable_id
-from canonical_model_generator.view_model_scope import scope_to_endpoint_view_models
+from canonical_model_generator.discovery_agent.model import (
+    DiscoveryModel,
+    Lineage,
+    RelationshipKind,
+    stable_id,
+)
+from canonical_model_generator.discovery_agent.view_model_scope import (
+    scope_to_endpoint_view_models,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
