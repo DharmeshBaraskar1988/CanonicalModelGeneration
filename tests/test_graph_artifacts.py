@@ -28,13 +28,18 @@ def test_graph_runs_complete_fixture_and_generates_valid_artifacts(tmp_path: Pat
     }
     discovery = json.loads((output / "discovery-model.json").read_text(encoding="utf-8"))
     assert discovery["summary"]["operationCount"] == 2
-    assert discovery["summary"]["entityCount"] == 2
+    assert discovery["summary"]["entityCount"] == 4
     catalog = json.loads((output / "api-catalog.json").read_text(encoding="utf-8"))
     create_quote = next(
         item for item in catalog["operations"] if item["operation"] == "CreateQuote"
     )
     assert create_quote["requestModel"] == "CreateQuoteRequest"
     assert create_quote["requestModelTree"]["rootModel"] == "CreateQuoteRequest"
+    assert {item["name"] for item in create_quote["requestModelTree"]["models"]} == {
+        "AddressDto",
+        "CreateQuoteRequest",
+        "VehicleDto",
+    }
     assert create_quote["responses"][0]["responseModel"] == "QuoteResponse"
 
 

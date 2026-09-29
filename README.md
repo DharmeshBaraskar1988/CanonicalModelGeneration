@@ -16,6 +16,7 @@ This project will discover the structure and behavior of regional insurance APIs
 - [Discovery Agent state and artifacts](docs/DISCOVERY_AGENT_STATE_AND_ARTIFACTS.md)
 - [Repository RAG saved index and handoff](docs/REPOSITORY_RAG_STATE_AND_ARTIFACTS.md)
 - [API Analyzer state and artifacts](docs/API_ANALYZER_STATE_AND_ARTIFACTS.md)
+- [ACORD RAG state and artifacts](docs/ACORD_RAG_STATE_AND_ARTIFACTS.md)
 
 Phase 1 deterministic discovery is complete and Phase 2 API analysis is in progress. A
 synthetic regional Quote API and OpenAPI input are available under
@@ -25,9 +26,11 @@ configuration, verification, and troubleshooting instructions.
 
 ## Quick start
 
-The Streamlit application supports repository, OpenAPI, or combined discovery; a separate
+The Streamlit application supports repository plus optional OpenAPI discovery; a separate
 Repository RAG tab indexes code for source-linked retrieval. The API Analyzer Agent can reuse
-that saved index to interpret selected code or enrich a discovered API.
+that saved index to interpret selected code or enrich a discovered API. The independent ACORD
+workspace accepts an authorized OpenAPI 3 YAML/JSON reference, generates Discovery-equivalent
+artifact views, and builds its own local retrieval index without performing alignment.
 
 ```powershell
 python -m venv .venv
@@ -73,4 +76,5 @@ The command generates `discovery-model.json`, `api-catalog.json`, `data-model.js
 - RAG call/reference links are syntax-derived candidates, not verified execution paths.
 - Code-to-business-meaning interpretation requires a working OpenAI key and source-sharing acknowledgement; generated claims require human review.
 - Deep persistence, integration, security, and call-path discovery are not yet accepted capabilities.
+- ACORD ingestion is implemented, but ACORD-to-regional alignment and canonical generation are not.
 - See [repository RAG](docs/REPOSITORY_RAG.md) for indexing limits, retrieval behavior, and the code-chunking example.

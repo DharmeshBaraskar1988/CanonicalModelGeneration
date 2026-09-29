@@ -24,7 +24,12 @@ def test_reconciliation_merges_evidence_and_is_stable() -> None:
     second = reconcile(roslyn, openapi)
 
     assert len(first.operations) == 2
-    assert [item.name for item in first.entities] == ["CreateQuoteRequest", "QuoteResponse"]
+    assert [item.name for item in first.entities] == [
+        "AddressDto",
+        "CreateQuoteRequest",
+        "QuoteResponse",
+        "VehicleDto",
+    ]
     assert [item.name for item in first.enums] == ["CoverageType", "QuoteStatus"]
     assert len(first.sources) == 4
     create = next(item for item in first.operations if item.method == "POST")
@@ -40,5 +45,10 @@ def test_reconciliation_preserves_in_scope_request_conflicts() -> None:
 
     result = reconcile(roslyn, openapi)
 
-    assert [item.name for item in result.entities] == ["CreateQuoteRequest", "QuoteResponse"]
+    assert [item.name for item in result.entities] == [
+        "AddressDto",
+        "CreateQuoteRequest",
+        "QuoteResponse",
+        "VehicleDto",
+    ]
     assert any("CreateQuoteRequest.applicantName" in item.message for item in result.diagnostics)

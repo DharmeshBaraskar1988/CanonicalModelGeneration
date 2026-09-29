@@ -156,3 +156,78 @@ def test_regional_domain_tree_groups_domain_capability_api_and_endpoints() -> No
     assert capability["name"] == "Quote Management"
     assert capability["apis"][0]["name"] == "quote-api"
     assert capability["apis"][0]["endpoints"][0]["Endpoint"] == operation.name
+
+
+def test_model_domain_falls_back_to_its_analyzed_endpoint_in_partial_run() -> None:
+    model = DiscoveryModel.model_validate_json(
+        Path("tests/fixtures/discovery-model.valid.json").read_bytes()
+    ).model_copy(update={"region": "EU", "system": "quote-api"})
+    operation = model.operations[0]
+    metadata = {
+        "endpoints": [
+            {
+                "operationId": operation.id,
+                "domain": {"name": "Policy"},
+                "capability": {"name": "Quote Management"},
+            }
+        ],
+        "entities": [],
+    }
+    runs = {
+        "partial": {
+            "profile": {"region": "EU", "application": "quote-api"},
+            "discovery_model": model.model_dump_json(by_alias=True).encode(),
+            "phase_2_artifacts": {"semantic-metadata.json": json.dumps(metadata).encode()},
+        }
+    }
+
+    rows, _ = regional_catalog_rows(runs, region="EU")
+    request = next(row for row in rows if row["Model"] == model.entities[0].name)
+    assert request["Domain"] == "Policy"
+    tree = regional_model_tree(runs, region="EU")
+    request_branch = next(
+        item for item in tree[0]["models"] if item["name"] == model.entities[0].name
+    )
+    assert request_branch["domain"] == "Policy"
+    assert request_branch["domainSource"] == "Analyzed endpoint mapping"
+
+
+def test_all_api_view_hides_superseded_duplicate_application_run() -> None:
+    model = DiscoveryModel.model_validate_json(
+        Path("tests/fixtures/discovery-model.valid.json").read_bytes()
+    ).model_copy(update={"region": "EU", "system": "insurance"})
+    empty = model.model_copy(deep=True)
+    empty.entities = []
+    empty.enums = []
+    empty.relationships = []
+    empty.validations = []
+    empty.evidence = []
+    empty.lineage = []
+    for operation in empty.operations:
+        operation.request_entity_id = None
+        for response in operation.responses:
+            response.entity_id = None
+    empty.summary.entity_count = 0
+    profile = {
+        "region": "EU",
+        "application": "Insurance",
+        "repository": "InsurancePortal.zip",
+    }
+    runs = {
+        "old": {
+            "profile": profile,
+            "discovery_model": empty.model_dump_json(by_alias=True).encode(),
+            "phase_2_artifacts": {},
+        },
+        "new": {
+            "profile": profile,
+            "discovery_model": model.model_dump_json(by_alias=True).encode(),
+            "phase_2_artifacts": {},
+        },
+    }
+
+    tree = regional_model_tree(runs, region="EU")
+
+    assert len(tree) == 1
+    assert tree[0]["runId"] == "new"
+    assert len(tree[0]["models"]) == len(model.entities)

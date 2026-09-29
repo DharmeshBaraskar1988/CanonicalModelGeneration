@@ -2,7 +2,7 @@
 
 This describes the current **Phase 2** LangGraph in
 [workflow.py](../src/canonical_model_generator/api_analyzer/workflow.py). A graph node returns
-state updates; the last node renders six output artifacts. The required cross-agent input is
+state updates; the last node renders four text-based output artifacts. The required cross-agent input is
 serialized `discovery-model.json`, **not** Discovery's live graph state or its five operator
 views. Repository source and a saved, snapshot-matched RAG index are mandatory.
 
@@ -38,7 +38,7 @@ partial output. Specification-only API Analyzer runs are rejected at the public 
 | `analyze_endpoints` | `endpoint_contexts`, index, provider | `endpoint_semantics`, `investigations`, `errors`. May do one bounded low-confidence retrieval and re-analysis | No |
 | `analyze_entities` | `entity_contexts`, provider | `entity_semantics` for each model and its attributes as one batch; `errors` | No |
 | `analyze_enums` | `enum_contexts`, provider | `enum_semantics`, `errors` | No |
-| `render_and_validate` | DiscoveryModel, contexts, semantic results, investigations, retrieval stats, provider status, errors | `artifacts` mapping filenames to bytes | **Six output files** |
+| `render_and_validate` | DiscoveryModel, contexts, semantic results, investigations, retrieval stats, provider status, errors | `artifacts` mapping filenames to bytes | **Four output files** |
 
 Endpoint/entity/enum semantic results are typed **internal graph values**, not files sent
 between agents. Structural IDs, routes, response codes, fields, and types come from Discovery;
@@ -54,12 +54,11 @@ artifacts when provider or evidence work fails.
 | `semantic-metadata.json` | Typed provider results, investigations, retrieval stats | Inspect model classifications/descriptions, confidence, and investigation details |
 | `evidence-map.json` | Discovery lineage plus source contexts/results | Inspect which source evidence was considered for semantic targets |
 | `enrichment-report.json` | Independent coverage and validation checks, gaps, errors, confidence bands | Decide whether run is complete or partial and what needs review |
-| `entity-relationship-diagram.mmd` | Deterministic Discovery entities, attributes, containment, and inheritance | Mermaid source for review, versioning, and downstream rendering |
-| `entity-relationship-diagram.svg` | The same deterministic entity inventory and relationships | Portable downloadable image artifact |
 
 `run_api_analyzer_agent` returns these as `dict[str, bytes]`; Streamlit keeps them in
 `st.session_state["phase_2_artifacts"]` for preview/download. The graph's `artifacts` key is the
-return value, not a new agent handoff to Discovery.
+return value, not a new agent handoff to Discovery. Relationship-diagram and image artifacts are
+neither generated nor restored into the active artifact collection.
 
 In the UI, each completed Discovery submission has a session-scoped application profile (region,
 application name, repository ZIP name) and its own Discovery bytes, repository archive, fresh
@@ -72,6 +71,13 @@ override is session-only and never serialized into an artifact.
 The UI retains a failure message on the selected application profile. A successful or failed run
 immediately exposes a retry action for that same profile; retry clears only its previous Phase 2
 outputs/error and reuses its Discovery artifact, repository archive, and RAG index.
+
+A partial run with missing endpoint, entity, or enum IDs also exposes **Continue remaining
+analysis**. Continuation validates prior semantic metadata against the current Discovery inventory,
+reuses completed typed results and investigations, and invokes the provider only for unfinished
+targets. Each continuation has a fresh configured request/token ceiling; cumulative provider usage
+remains in the regenerated report for audit. **Restart API Analyzer from beginning** discards prior
+semantic results and performs a full new run.
 
 ## Focused interpretation is a separate path
 

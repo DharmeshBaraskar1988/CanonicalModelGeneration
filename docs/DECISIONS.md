@@ -613,7 +613,336 @@ Analyzer tab and include both formats in individual downloads and the Phase 2 bu
   edges.
 - SVG is generated locally and does not require a browser-side export or external rendering service.
 
+## ADR-028 - Enforce token budgets before paid semantic calls
+
+- Date: 2026-09-28
+- Status: Accepted; extends ADR-014 and ADR-027
+
+### Context
+
+Bounded source characters do not directly bound model tokens or total paid usage. A large
+application can require endpoint, entity, enum, and investigation calls, and SDK retries can add
+cost. Operators need a deterministic ceiling that stops spending before a run exhausts credits,
+while retaining any useful results already produced.
+
+### Decision
+
+Count each semantic request's system prompt and serialized JSON context with `tiktoken` before it is
+sent. Enforce configurable maximum tokens and requests per run, fixed per-request input and output
+ceilings, and reserve the full output allowance when projecting the next request. Pass the output
+ceiling to the Responses API. When a ceiling would be exceeded, reject the call locally, stop the
+current analysis loop, record an explicit validation gap, and render partial artifacts. Capture
+provider-reported input/output usage and structured-result counts in the enrichment report and UI.
+
+### Consequences
+
+- No semantic request begins when its projected token usage would exceed an operator-visible limit.
+- Completed semantic results remain available if a later target exhausts the budget.
+- Token ceilings are stable controls but are not currency estimates; model pricing remains external.
+- Retry behavior remains bounded by the OpenAI client, while request and token reporting cover
+  completed Responses API calls visible to the adapter.
+
+## ADR-029 - Scope discovery models by endpoint reachability, not naming suffix
+
+- Date: 2026-09-28
+- Status: Accepted; supersedes ADR-016 and ADR-017 model-name restrictions
+
+### Context
+
+Real ASP.NET Core endpoints commonly use DTOs and domain-shaped models whose names do not end in
+`ViewModel`, `Request`, or `Response`. For example, a controller can accept `ClaimDto` and return
+`InsuranceClaim`. Suffix filtering therefore removed models that are part of the actual HTTP API
+contract and also removed their nested child models.
+
+### Decision
+
+Start the retained model graph from user-authored request types, response types, and model-valued
+endpoint parameters discovered by Roslyn. Recursively retain user-authored source types referenced
+by properties (including collection element types) and inheritance, regardless of class-name suffix.
+Continue to exclude generated/build-output types and models that are not reachable from an endpoint.
+Preserve endpoint, containment, inheritance, evidence, and source-lineage relationships.
+
+### Consequences
+
+- DTOs and domain models used by an endpoint are first-class Discovery entities.
+- Nested and collection child models appear in the Data Model, API Catalog trees, enriched OpenAPI,
+  and ER artifacts.
+- Unrelated repository classes remain outside the Discovery contract.
+- A broadly shared base model is retained when an endpoint-reachable model actually inherits it.
+
+## ADR-030 - Keep API Analyzer provider input and artifacts text-only
+
+- Date: 2026-09-28
+- Status: Accepted; amends ADR-027
+
+### Context
+
+The API Analyzer semantic contract needs only structured Discovery facts and bounded source text.
+An SVG relationship artifact and browser-rendered Mermaid views added an image surface that is not
+required for model reasoning or the machine-readable Phase 2 handoff.
+
+### Decision
+
+Send semantic providers only system and user string messages containing prompts and serialized JSON
+context. Do not send images, image URLs, or binary content. Do not generate or render image artifacts
+in Phase 2. Retain the deterministic entity-relationship `.mmd` artifact strictly as plain UTF-8
+source, and filter legacy image artifacts when loading or presenting saved application records.
+
+### Consequences
+
+- Model calls are auditable as text-only payloads.
+- Phase 2 emits five text-based artifacts and no SVG, raster image, or rendered diagram.
+- Existing image files on disk are historical data but are ignored by application loading and UI.
+- Consumers that want a visual diagram must render the `.mmd` outside this workflow.
+
+## ADR-031 - Keep usage accounting internal and remove Phase 2 relationship artifacts
+
+- Date: 2026-09-28
+- Status: Accepted; amends ADR-028 and ADR-030
+
+### Context
+
+The API Analyzer result page displayed a large aggregate token count and per-call ledger, and Phase 2
+still emitted a plain-text entity-relationship source after image output was removed. Neither item is
+required to consume the enriched API contract, and both add operator-facing output noise.
+
+### Decision
+
+Keep token budgets, preflight enforcement, provider-reported accounting, and the machine-readable
+`tokenUsage` report field. Remove the aggregate usage message and per-call table from Streamlit.
+Remove entity-relationship source generation and exclude legacy `.mmd` and image artifacts from the
+active/saved Phase 2 artifact collection. Define the Phase 2 output contract as enriched OpenAPI plus
+semantic metadata, evidence map, and enrichment report only.
+
+### Consequences
+
+- Token limits still prevent overspending and remain auditable in `enrichment-report.json`.
+- Operators no longer see the usage summary or ledger in the normal result view.
+- Phase 2 produces four required artifacts and no relationship diagram/source artifact.
+- Existing historical relationship files on disk are ignored rather than deleted.
+
 ## ADR template
+
+## ADR-032 - Separate ACORD ingestion from the regional application pipeline
+
+- Date: 2026-09-28
+- Status: Accepted; amends the workflow presentation in P2.6q
+
+### Context
+
+The six-stage UI incorrectly implied that ACORD ingestion and alignment were steps 5 and 6 of each
+selected regional application's Discovery-to-review journey. ACORD reference material requires an
+independent ingestion and retrieval lifecycle.
+
+### Decision
+
+Present the selected regional application as four stages: Discovery, Repository RAG, API Analyzer,
+and Regional View. Show only aggregate progress for those stages, without per-stage status cards.
+Expose ACORD ingestion as a separate, unnumbered workspace and describe it as a future independent
+RAG pipeline. Do not expose ACORD alignment as a numbered workspace before ingestion is implemented
+and its reference artifact is accepted.
+
+### Consequences
+
+- Regional application progress no longer includes planned ACORD work.
+- ACORD can later own separate inputs, provenance, indexing, acceptance, and progress state.
+- Alignment remains gated without implying that it is currently available.
+
+## ADR-033 - Resume partial semantic analysis by structural target ID
+
+- Date: 2026-09-28
+- Status: Accepted; extends ADR-028
+
+### Context
+
+Large repositories can exhaust the configured per-run token ceiling after producing valid semantic
+results for only part of the Discovery inventory. Restarting repeats paid calls for completed
+targets and can reach the same ceiling again.
+
+### Decision
+
+Allow a partial Phase 2 artifact set to seed a continuation. Validate every prior endpoint, entity,
+attribute, enum, and response result against the current Discovery artifact before reuse. Skip
+completed IDs and call the provider only for unfinished targets. Give each explicit continuation a
+fresh configured token/request budget, merge new validated results into regenerated artifacts, and
+retain cumulative usage for audit. Keep full restart as a distinct operator action.
+
+### Consequences
+
+- Budget exhaustion produces resumable output instead of forcing repeated paid analysis.
+- A large application may require multiple explicit continuation runs.
+- Changed or mismatched Discovery structures reject prior semantics rather than reusing them.
+- The token ceiling remains effective per run; continuation is not an unbounded call.
+
+## ADR-034 - Remove per-entity normalization and define reached-stage progress
+
+- Date: 2026-09-29
+- Status: Accepted; amends ADR-023
+
+### Context
+
+The Regional View exposed optional entity-by-entity LLM normalization settings even though the
+operator does not require that workflow. Its progress bar also counted only states named
+`Complete`; consequently a valid partial Analyzer result did not advance the bar and the final
+read-only Regional View could never contribute to completion.
+
+### Decision
+
+Remove the per-entity normalization settings, action, and proposal columns. Keep authoritative
+Discovery/API Analyzer model data and the separately approved region-wide review workflow. Define
+the regional pipeline indicator as stages reached: `Complete`, `Partial`, and `Current` contribute
+to progress. When API Analyzer completes, Regional View becomes the current fourth stage without
+attempting to switch Streamlit tabs programmatically.
+
+### Consequences
+
+- Regional model inspection no longer makes an optional LLM normalization call per entity.
+- Partial analysis visibly advances the pipeline while remaining labeled partial with coverage.
+- Completed analysis reaches stage four even if the operator has not manually opened its tab.
+- Navigation remains user-controlled and compatible with Streamlit widget state.
+
+## ADR-035 - Ingest ACORD references as independent structural truth
+
+- Date: 2026-09-29
+- Status: Accepted; implements the ingestion boundary introduced by ADR-032
+
+### Context
+
+The ACORD workspace needs to accept an approved YAML/JSON API reference and make its endpoints,
+models, nested fields, prose, and constraints retrievable before any comparison with a regional
+application. Reusing regional Discovery would incorrectly require a .NET repository, while sending
+the document through an LLM would make structural extraction nondeterministic.
+
+### Decision
+
+Accept one authorized OpenAPI 3 YAML/JSON document per ACORD ingestion, with an operator-supplied
+reference label and approved version. Parse endpoint and schema structure deterministically,
+promote inline nested objects into linked entities, retain available summary, description,
+`$comment`/documentation notes, validation constraints, source hash, and JSON-pointer lineage, and
+generate the same five operator views as Discovery. Create bounded endpoint/entity chunks and store
+their embeddings in an ACORD-specific persistent local Chroma index. Persist each ingestion under
+ignored `.acord/<run-id>/` storage and allow exact saved references to be reopened and queried.
+Do not compare the reference with regional APIs, generate canonical mappings, or use an LLM in this
+ingestion slice.
+
+### Consequences
+
+- ACORD structure and prose remain traceable to the uploaded reference rather than inferred.
+- Nested inline models and their constraints are available to later alignment retrieval.
+- YAML formatting comments are not part of the OpenAPI data model; semantic `$comment`, description,
+  supported vendor-note fields, and external-documentation metadata are retained.
+- Local ingestion history may contain licensed reference content and must be protected or removed
+  according to the operator's data-handling policy.
+- ACORD-to-regional alignment remains a separately gated future capability.
+
+## ADR-036 - Group crawler and ACORD workspaces by evidence pipeline
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-032 and ADR-035
+
+### Context
+
+The sidebar listed the regional crawler stages and ACORD ingestion as one flat set even though they
+operate on different source evidence and persistence lifecycles. Operators also need to see where
+the future comparison between ACORD and the generated regional catalog will occur.
+
+### Decision
+
+Group navigation under `Crawler code` and `ACORD view`. The crawler group contains Discovery Agent,
+Repository RAG, API Analyzer, and Regional View. The ACORD group contains ACORD ingestion and a
+separate alignment workspace. Keep alignment gated until implemented, and identify its regional
+inputs as the selected entity/attribute catalog plus the domain/capability catalog produced from
+API Analyzer evidence.
+
+### Consequences
+
+- Navigation reflects the two independent ingestion and retrieval pipelines.
+- ACORD ingestion remains usable without implying that comparison is already implemented.
+- The future alignment boundary is visible and does not mutate either source catalog.
+
+## ADR-037 - Keep standards workspaces outside the crawler tab strip
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-036
+
+### Context
+
+Showing ACORD ingestion and alignment beside the four crawler tabs made the independent standards
+pipeline look like additional stages of crawler execution. Operators also need one future-facing
+place to review canonical alignment and quantify gaps.
+
+### Decision
+
+Keep only Discovery, Repository RAG, API Analyzer, and Regional View visible in the crawler tab row.
+Open ACORD ingestion, ACORD alignment, and Canonical View from the separate ACORD sidebar menu.
+Define Canonical View as three review areas: entity alignment, domain/capability alignment, and ACORD
+gap identification with aligned and unaligned coverage percentages. Until mapping is implemented
+and reviewed, show these sections as planned and do not invent percentage values.
+
+### Consequences
+
+- The crawler tab strip represents only crawler stages.
+- Standards ingestion, comparison, and canonical review have separate navigation identities.
+- Gap metrics remain empty until traceable alignment evidence exists.
+
+## ADR-038 - Use separate page containers instead of hidden standards tabs
+
+- Date: 2026-09-29
+- Status: Accepted; strengthens ADR-037
+
+### Context
+
+Hiding ACORD tab buttons with CSS removed them visually but left ACORD workspaces as members of the
+same tab control. That did not satisfy the requirement for separate pages and made the navigation
+structure dependent on tab implementation details.
+
+### Decision
+
+Create the top tab control from the four crawler labels only. Render ACORD ingestion, ACORD
+alignment, and Canonical View in separately keyed page containers selected through the ACORD sidebar
+menu. Hide inactive page containers as layout hosts, not tab buttons, and synchronize crawler tab
+selection independently from the active standards page.
+
+### Consequences
+
+- No ACORD or Canonical label exists in the top tab control.
+- Standards pages retain the existing session state and saved artifacts.
+- Crawler tab selection and standards-page selection have independent widget state.
+
+## ADR-039 - Gate canonical output on explicit ACORD alignment review
+
+- Date: 2026-09-29
+- Status: Accepted; advances the alignment and canonicalization roadmap
+
+### Context
+
+Operators need to compare the regionally generated entity and domain catalogs with an accepted
+ACORD reference, understand gaps, choose standards, and explain exceptions. Automatically replacing
+regional names from a similarity score would discard reviewer intent and could present a proposed
+mapping as canonical truth.
+
+### Decision
+
+Create deterministic alignment proposals for entities, attributes, domains, and capabilities using
+name, type, description, and structural evidence. Use three operator statuses: full match, partial
+match, and not matched. Calculate coverage with full matches weighted as one and partial matches as
+one half, while also reporting the strict not-matched percentage. Match child attributes and
+capabilities one-to-one within a proposed parent so a single ACORD child is not silently reused.
+
+Require the reviewer to choose the ACORD candidate or a manual canonical name for every item.
+Require a reason for every partial match, unmatched item, or manual choice, and block approval until
+the entire entity/attribute and domain/capability inventory is resolved. Persist approval as a new
+`.alignments/<id>/canonical-alignment.json` artifact containing canonical entities, canonical
+endpoints, approved entity usages, match metrics, and a complete decision/reason ledger. Do not
+modify Discovery, API Analyzer, Regional View, or ACORD ingestion artifacts.
+
+### Consequences
+
+- The UI can emphasize unmatched detail without hiding full matches or their evidence.
+- Canonical names and endpoints are review outcomes, not automatic similarity-score assertions.
+- Approved artifacts are reopenable and downloadable, and retain exact ACORD/run provenance.
+- This delivers a single-region canonical model but does not implement multi-region consolidation,
+  enterprise version governance, adapter generation, or change-impact analysis.
 
 Copy this section for future decisions:
 

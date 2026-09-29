@@ -29,10 +29,10 @@ from canonical_model_generator.api_analyzer.contracts import (
 from canonical_model_generator.api_analyzer.contracts import (
     ResponseSemantic as _ResponseSemantic,
 )
-from canonical_model_generator.api_analyzer.er_diagram import render_er_mermaid, render_er_svg
 from canonical_model_generator.api_analyzer.providers.openai import (
     OpenAISemanticProvider as _OpenAISemanticProvider,
 )
+from canonical_model_generator.api_analyzer.token_budget import TokenBudgetExceeded
 from canonical_model_generator.api_analyzer.tools.repository_search import ChromaRepositoryIndex
 from canonical_model_generator.discovery_agent.model import DiscoveryModel, TypeKind, TypeRef
 from canonical_model_generator.discovery_agent.openapi import discover_openapi
@@ -110,6 +110,7 @@ class Phase2State(TypedDict, total=False):
     entity_semantics: list[EntitySemantic]
     enum_semantics: list[EnumSemantic]
     investigations: list[dict[str, Any]]
+    prior_token_usage: dict[str, Any]
     errors: list[str]
     artifacts: dict[str, bytes]
 
@@ -136,6 +137,7 @@ def run_semantic_openapi_agent(
     *,
     rag_store_path: Path | None = None,
     embedder: Embedder | None = None,
+    resume_artifacts: Mapping[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     """Run Phase 2 from a validated serialized Phase 1 artifact."""
     discovery_model = load_discovery_artifact(discovery_artifact)
@@ -151,6 +153,7 @@ def run_semantic_openapi_agent(
         saved_index.validate_snapshot(repository_root, discovery_model)
     finally:
         saved_index.close()
+    resume_state = _load_resume_state(resume_artifacts, discovery_model)
     with TemporaryDirectory(prefix="canonical-chroma-"):
         graph = _build_graph(provider, progress, embedder)
         result = graph.invoke(
@@ -160,6 +163,7 @@ def run_semantic_openapi_agent(
                 "vector_store_path": str(rag_store_path),
                 "has_repository": True,
                 "persistent_index": True,
+                **resume_state,
                 "errors": [],
             }
         )
@@ -174,6 +178,7 @@ def run_api_analyzer_agent(
     *,
     rag_store_path: Path | None = None,
     embedder: Embedder | None = None,
+    resume_artifacts: Mapping[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     """Run the API Analyzer using only the Discovery Agent artifact handoff."""
     return run_semantic_openapi_agent(
@@ -183,7 +188,62 @@ def run_api_analyzer_agent(
         progress,
         rag_store_path=rag_store_path,
         embedder=embedder,
+        resume_artifacts=resume_artifacts,
     )
+
+
+def _load_resume_state(
+    artifacts: Mapping[str, bytes] | None, model: DiscoveryModel
+) -> dict[str, Any]:
+    if not artifacts or "semantic-metadata.json" not in artifacts:
+        return {}
+    try:
+        metadata = json.loads(artifacts["semantic-metadata.json"])
+        endpoints = [
+            EndpointSemantic.model_validate(item) for item in metadata.get("endpoints", [])
+        ]
+        entities = [EntitySemantic.model_validate(item) for item in metadata.get("entities", [])]
+        enums = [EnumSemantic.model_validate(item) for item in metadata.get("enums", [])]
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("Previous API Analyzer artifacts cannot be resumed") from exc
+
+    operations_by_id = {item.id: item for item in model.operations}
+    entities_by_id = {item.id: item for item in model.entities}
+    enums_by_id = {item.id: item for item in model.enums}
+    if len({item.operation_id for item in endpoints}) != len(endpoints):
+        raise ValueError("Previous API Analyzer artifacts contain duplicate endpoint results")
+    if len({item.entity_id for item in entities}) != len(entities):
+        raise ValueError("Previous API Analyzer artifacts contain duplicate entity results")
+    if len({item.enum_id for item in enums}) != len(enums):
+        raise ValueError("Previous API Analyzer artifacts contain duplicate enum results")
+    for result in endpoints:
+        operation = operations_by_id.get(result.operation_id)
+        if operation is None:
+            raise ValueError("Previous API Analyzer endpoint does not match Discovery")
+        _validate_endpoint_result(
+            {"operation": operation.model_dump(mode="json", by_alias=True)}, result
+        )
+    for result in entities:
+        entity = entities_by_id.get(result.entity_id)
+        if entity is None:
+            raise ValueError("Previous API Analyzer entity does not match Discovery")
+        _validate_entity_result({"entity": entity.model_dump(mode="json", by_alias=True)}, result)
+    for result in enums:
+        if result.enum_id not in enums_by_id:
+            raise ValueError("Previous API Analyzer enum does not match Discovery")
+        _validate_domain(result.domain)
+    investigations = [
+        item
+        for item in metadata.get("investigations", [])
+        if isinstance(item, dict) and item.get("targetId") in operations_by_id
+    ]
+    return {
+        "endpoint_semantics": endpoints,
+        "entity_semantics": entities,
+        "enum_semantics": enums,
+        "investigations": investigations,
+        "prior_token_usage": metadata.get("tokenUsage", {}),
+    }
 
 
 def _build_graph(
@@ -283,11 +343,22 @@ def _build_graph(
         }
 
     def analyze_endpoints(state: Phase2State) -> dict[str, Any]:
-        results: list[EndpointSemantic] = []
-        investigations: list[dict[str, Any]] = []
+        results = list(state.get("endpoint_semantics", []))
+        completed_ids = {item.operation_id for item in results}
+        contexts = [
+            item
+            for item in state["endpoint_contexts"]
+            if item["operation"]["id"] not in completed_ids
+        ]
+        investigations = list(state.get("investigations", []))
         errors = list(state.get("errors", []))
-        total = len(state["endpoint_contexts"])
-        for index, context in enumerate(state["endpoint_contexts"], 1):
+        total = len(contexts)
+        if completed_ids:
+            notify(
+                f"Continuing with {total} unfinished endpoint(s); "
+                f"reusing {len(completed_ids)} completed result(s)."
+            )
+        for index, context in enumerate(contexts, 1):
             name = context["operation"]["name"]
             notify(f"Analyzing endpoint {index}/{total}: {name}")
             try:
@@ -309,6 +380,8 @@ def _build_graph(
                     )
             except Exception as exc:  # provider errors must become visible partial output
                 errors.append(f"Endpoint {name}: {_safe_error_text(exc)}")
+                if isinstance(exc, TokenBudgetExceeded):
+                    break
         return {
             "endpoint_semantics": results,
             "investigations": investigations,
@@ -316,10 +389,19 @@ def _build_graph(
         }
 
     def analyze_entities(state: Phase2State) -> dict[str, Any]:
-        results: list[EntitySemantic] = []
+        results = list(state.get("entity_semantics", []))
+        completed_ids = {item.entity_id for item in results}
+        contexts = [
+            item for item in state["entity_contexts"] if item["entity"]["id"] not in completed_ids
+        ]
         errors = list(state.get("errors", []))
-        total = len(state["entity_contexts"])
-        for index, context in enumerate(state["entity_contexts"], 1):
+        total = len(contexts)
+        if completed_ids:
+            notify(
+                f"Continuing with {total} unfinished entity/entities; "
+                f"reusing {len(completed_ids)} completed result(s)."
+            )
+        for index, context in enumerate(contexts, 1):
             name = context["entity"]["name"]
             notify(f"Analyzing entity {index}/{total}: {name}")
             try:
@@ -328,13 +410,24 @@ def _build_graph(
                 results.append(result)
             except Exception as exc:  # provider errors must become visible partial output
                 errors.append(f"Entity {name}: {_safe_error_text(exc)}")
+                if isinstance(exc, TokenBudgetExceeded):
+                    break
         return {"entity_semantics": results, "errors": errors}
 
     def analyze_enums(state: Phase2State) -> dict[str, Any]:
-        results: list[EnumSemantic] = []
+        results = list(state.get("enum_semantics", []))
+        completed_ids = {item.enum_id for item in results}
+        contexts = [
+            item for item in state["enum_contexts"] if item["enum"]["id"] not in completed_ids
+        ]
         errors = list(state.get("errors", []))
-        total = len(state["enum_contexts"])
-        for index, context in enumerate(state["enum_contexts"], 1):
+        total = len(contexts)
+        if completed_ids:
+            notify(
+                f"Continuing with {total} unfinished enum(s); "
+                f"reusing {len(completed_ids)} completed result(s)."
+            )
+        for index, context in enumerate(contexts, 1):
             name = context["enum"]["name"]
             notify(f"Analyzing enum {index}/{total}: {name}")
             try:
@@ -345,6 +438,8 @@ def _build_graph(
                 results.append(result)
             except Exception as exc:  # provider errors must become visible partial output
                 errors.append(f"Enum {name}: {_safe_error_text(exc)}")
+                if isinstance(exc, TokenBudgetExceeded):
+                    break
         return {"enum_semantics": results, "errors": errors}
 
     def render(state: Phase2State) -> dict[str, Any]:
@@ -364,6 +459,7 @@ def _build_graph(
                 state.get("retrieval_stats", {}),
                 state.get("provider_ready", False),
                 state.get("errors", []),
+                _merge_token_usage(state.get("prior_token_usage", {}), _provider_usage(provider)),
             )
         }
 
@@ -411,6 +507,36 @@ def _safe_error_text(exc: Exception) -> str:
     return value[:1000]
 
 
+def _provider_usage(provider: SemanticProvider) -> dict[str, Any]:
+    snapshot = getattr(provider, "usage_snapshot", None)
+    return snapshot() if callable(snapshot) else {"status": "not-reported"}
+
+
+def _merge_token_usage(previous: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    """Combine audit totals while each continuation retains a fresh enforced run budget."""
+    if not previous or previous.get("status") == "not-reported":
+        return current
+    if not current or current.get("status") == "not-reported":
+        return previous
+    total_keys = (
+        "requestsStarted",
+        "requestsCompleted",
+        "resultsProduced",
+        "estimatedInputTokens",
+        "actualInputTokens",
+        "actualOutputTokens",
+        "actualTotalTokens",
+    )
+    merged = dict(current)
+    for key in total_keys:
+        merged[key] = int(previous.get(key, 0)) + int(current.get(key, 0))
+    calls = [*previous.get("calls", []), *current.get("calls", [])]
+    merged["calls"] = [dict(item, requestNumber=index) for index, item in enumerate(calls, 1)]
+    merged["continuationRuns"] = int(previous.get("continuationRuns", 1)) + 1
+    merged["limitScope"] = "per-run; each continuation receives a fresh configured budget"
+    return merged
+
+
 def _validate_entity_result(context: dict[str, Any], result: EntitySemantic) -> None:
     if result.entity_id != context["entity"]["id"]:
         raise ValueError("the result changed the entity ID")
@@ -432,6 +558,51 @@ def _validate_endpoint_result(context: dict[str, Any], result: EndpointSemantic)
     actual_responses = {item.status_code for item in result.responses}
     if actual_responses != expected_responses or len(actual_responses) != len(result.responses):
         raise ValueError("the result must describe every discovered response exactly once")
+
+
+def _reconcile_endpoint_responses(
+    context: dict[str, Any], result: EndpointSemantic
+) -> EndpointSemantic:
+    """Keep Phase 1 response inventory authoritative without losing provider disagreement."""
+    expected = [item["statusCode"] for item in context["operation"]["responses"]]
+    supplied: dict[int, list[ResponseSemantic]] = {}
+    for response in result.responses:
+        supplied.setdefault(response.status_code, []).append(response)
+
+    missing = [status for status in expected if status not in supplied]
+    extra = sorted(status for status in supplied if status not in set(expected))
+    duplicates = sorted(status for status, items in supplied.items() if len(items) > 1)
+    if not (missing or extra or duplicates):
+        return result
+
+    details: list[str] = []
+    if missing:
+        details.append(f"missing {missing}")
+    if extra:
+        details.append(f"additional {extra}")
+    if duplicates:
+        details.append(f"duplicated {duplicates}")
+    gap = (
+        "Provider response statuses differed from the authoritative Phase 1 inventory "
+        f"({'; '.join(details)}); Phase 1 statuses were retained for review."
+    )
+    reconciled = [
+        (
+            supplied[status][0]
+            if status in supplied
+            else ResponseSemantic(
+                status_code=status,
+                description=f"HTTP {status} response discovered by Phase 1.",
+            )
+        )
+        for status in expected
+    ]
+    return result.model_copy(
+        update={
+            "responses": reconciled,
+            "context_gaps": [*result.context_gaps, gap][:8],
+        }
+    )
 
 
 def _validate_domain(domain: DomainSemantic) -> None:
@@ -523,6 +694,7 @@ def _analyze_endpoint_with_follow_up(
     allow_retrieval: bool = True,
 ) -> tuple[EndpointSemantic, dict[str, Any]]:
     result = provider.analyze_endpoint(context)
+    result = _reconcile_endpoint_responses(context, result)
     _validate_endpoint_result(context, result)
     initial_confidence = _endpoint_minimum_confidence(result)
     requested = _safe_symbol_names(result.requested_symbols)
@@ -562,6 +734,7 @@ def _analyze_endpoint_with_follow_up(
             context["investigationRound"] = 2
             context["retrievedSymbols"] = requested
             result = provider.analyze_endpoint(context)
+            result = _reconcile_endpoint_responses(context, result)
             _validate_endpoint_result(context, result)
 
     final_confidence = _endpoint_minimum_confidence(result)
@@ -848,6 +1021,7 @@ def _render_artifacts(
     retrieval_stats: dict[str, Any],
     provider_ready: bool,
     errors: list[str],
+    token_usage: dict[str, Any] | None = None,
 ) -> dict[str, bytes]:
     document = _generate_openapi(model, endpoints, entities, enums, model_name)
     validation_errors = _validate_openapi_document(document, model)
@@ -861,6 +1035,7 @@ def _render_artifacts(
         "model": model_name,
         "providerStatus": "ready" if provider_ready else "failed",
         "retrieval": retrieval_stats,
+        "tokenUsage": token_usage or {"status": "not-reported"},
         "endpoints": [item.model_dump(mode="json", by_alias=True) for item in endpoints],
         "entities": [item.model_dump(mode="json", by_alias=True) for item in entities],
         "enums": [item.model_dump(mode="json", by_alias=True) for item in enums],
@@ -899,6 +1074,7 @@ def _render_artifacts(
         "model": model_name,
         "providerStatus": "ready" if provider_ready else "failed",
         "retrieval": retrieval_stats,
+        "tokenUsage": token_usage or {"status": "not-reported"},
         "endpointsDiscovered": len(model.operations),
         "endpointsEnriched": len(endpoints),
         "domainsClassified": sum(item.domain.name != "UNCLASSIFIED" for item in endpoints),
@@ -947,8 +1123,6 @@ def _render_artifacts(
         "semantic-metadata.json": _json_bytes(semantic_metadata),
         "evidence-map.json": _json_bytes(evidence_map),
         "enrichment-report.json": _json_bytes(report),
-        "entity-relationship-diagram.mmd": render_er_mermaid(model).encode("utf-8"),
-        "entity-relationship-diagram.svg": render_er_svg(model).encode("utf-8"),
     }
 
 
@@ -1045,10 +1219,17 @@ def _harness_report_fields(
         )
 
     complete = not gaps and len(analyzed_endpoint_ids) == len(model.operations)
+    budget_exhausted = any(
+        "no further paid calls will be made" in error.casefold()
+        or "exceeds the per-request limit" in error.casefold()
+        for error in errors
+    )
     return {
         "schema_version": "1.0",
         "status": "complete" if complete else "partial",
-        "stop_reason": "no_open_gaps" if complete else "stagnation",
+        "stop_reason": (
+            "no_open_gaps" if complete else "budget_exhausted" if budget_exhausted else "stagnation"
+        ),
         "inventory_endpoint_ids": sorted(item.id for item in model.operations),
         "analyzed_endpoint_ids": analyzed_endpoint_ids,
         "evidence": sorted(evidence, key=lambda item: item["id"]),
@@ -1237,6 +1418,42 @@ def _generate_openapi(
                     else component_names[operation.request_entity_id]
                 ),
             )
+            if operation.request_entity_id and operation.request_entity_id in component_names:
+                request_entity = next(
+                    item for item in model.entities if item.id == operation.request_entity_id
+                )
+                request_semantic = entity_by_id.get(operation.request_entity_id)
+                request_attribute_semantics = (
+                    {item.attribute_id: item for item in request_semantic.attributes}
+                    if request_semantic
+                    else {}
+                )
+                request_model_name = component_names[operation.request_entity_id]
+                request_body["x-request-model"] = {
+                    "name": request_model_name,
+                    "schemaRef": f"#/components/schemas/{request_model_name}",
+                    "description": (
+                        request_semantic.description
+                        if request_semantic
+                        else f"Discovered API contract model {request_entity.original_name}."
+                    ),
+                    "attributes": [
+                        {
+                            "name": attribute.name,
+                            "required": attribute.required,
+                            "description": (
+                                request_attribute_semantics[attribute.id].description
+                                if attribute.id in request_attribute_semantics
+                                else (
+                                    f"Discovered {attribute.original_name} field on "
+                                    f"{request_entity.original_name}."
+                                )
+                            ),
+                            "schema": _type_schema(attribute.type, component_names, type_targets),
+                        }
+                        for attribute in request_entity.attributes
+                    ],
+                }
             operation_doc["requestBody"] = request_body
         else:
             operation_doc["requestBody"] = {

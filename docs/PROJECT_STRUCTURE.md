@@ -17,6 +17,7 @@ analysis, and treats the .NET Roslyn extractor as an independent sidecar.
 |   |   |-- contracts.py           # Provider-neutral structured-output contracts
 |   |   |-- prompts.py             # Reviewable, versioned system prompts
 |   |   |-- providers/             # External model SDK adapters
+|   |   |-- token_budget.py        # tiktoken preflight and paid-call ceilings
 |   |   |-- tools/                 # Bounded repository-search implementation
 |   |   `-- workflow.py            # Phase 2 LangGraph and artifact rendering
 |   |-- repository_rag/            # Reusable repository evidence service
@@ -24,6 +25,10 @@ analysis, and treats the .NET Roslyn extractor as an independent sidecar.
 |   |   |-- embeddings.py          # Local Sentence Transformer / OpenAI adapters
 |   |   |-- index.py               # Persistent Chroma + exact/hybrid retrieval
 |   |   `-- cli.py                 # Independent index/query commands
+|   |-- acord_rag/                 # Independent ACORD reference boundary
+|   |   |-- pipeline.py            # OpenAPI extraction, five artifacts, semantic chunks
+|   |   |-- index.py               # ACORD-specific persistent Chroma retrieval
+|   |   `-- history.py             # Saved reference records under .acord/<run-id>
 |   |-- model.py, graph.py, ...    # Temporary compatibility imports only
 |   `-- intake.py                  # Safe upload inspection
 |-- dotnet/src/                    # Production Roslyn extractor
@@ -33,6 +38,7 @@ analysis, and treats the .NET Roslyn extractor as an independent sidecar.
 |-- schemas/                       # Versioned generated public schemas
 |-- scripts/                       # Maintenance commands, not runtime code
 |-- docs/                          # Architecture, status, decisions, and operations
+|-- docs/ARCHITECTURE_AND_LLM_DATA_FLOW.md # LLM boundary and credit guardrails
 |-- streamlit_app.py               # Deployment-compatible UI entry point
 `-- pyproject.toml                 # Python build, dependencies, and tool configuration
 ```
@@ -53,9 +59,14 @@ discovery digest before provider calls, and retrieves evidence without receiving
 graph state. The manifest contains redacted code, citations, parent IDs, typed edges, embedding
 configuration and coverage gaps. Keep it with its adjacent `chroma/` directory to reopen vectors.
 
+The ACORD RAG service does not depend on Discovery or API Analyzer state. It deterministically parses
+one approved OpenAPI reference, renders its own five operator artifacts, creates endpoint/entity
+chunks, and saves an `acord-rag-manifest.json` with an adjacent Chroma directory. Future alignment
+may consume this accepted index, but ingestion itself does not call an LLM or generate mappings.
+
 ## Runtime and generated files
 
-`.rag`, `.venv`, `.tmp`, `.pytest_cache`, `.ruff_cache`, `__pycache__`, `.env`, `bin`, and `obj` are local or
+`.rag`, `.acord`, `.applications`, `.venv`, `.tmp`, `.pytest_cache`, `.ruff_cache`, `__pycache__`, `.env`, `bin`, and `obj` are local or
 generated state. They are intentionally excluded by `.gitignore` and are not part of the production
 source tree. The inactive `normalization.py` and its schema are retained because ADR-013 explicitly
 records them as deferred work; removing them requires a separate decision and migration.

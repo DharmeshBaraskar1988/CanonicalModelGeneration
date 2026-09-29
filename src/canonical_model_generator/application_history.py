@@ -11,6 +11,7 @@ from canonical_model_generator.discovery_agent.model import DiscoveryModel
 
 HISTORY_VERSION = "1.0"
 RUN_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
+TEXT_PHASE_TWO_SUFFIXES = {".json", ".yaml", ".yml"}
 
 
 def save_application_record(root: Path, application_id: str, run: dict[str, Any]) -> None:
@@ -31,7 +32,12 @@ def save_application_record(root: Path, application_id: str, run: dict[str, Any]
     repository = run.get("repository_archive")
     if repository is not None:
         (target / "repository.zip").write_bytes(repository)
-    for filename, content in run.get("phase_2_artifacts", {}).items():
+    phase_two_artifacts = {
+        filename: content
+        for filename, content in run.get("phase_2_artifacts", {}).items()
+        if Path(filename).suffix.casefold() in TEXT_PHASE_TWO_SUFFIXES
+    }
+    for filename, content in phase_two_artifacts.items():
         safe_name = Path(filename).name
         if safe_name != filename:
             raise ValueError("Phase 2 artifact filename must not contain a path")
@@ -46,7 +52,7 @@ def save_application_record(root: Path, application_id: str, run: dict[str, Any]
             label: _safe_artifact_name(label, ".json")
             for label in run.get("discovery_artifacts", {})
         },
-        "phase2Artifacts": sorted(run.get("phase_2_artifacts", {})),
+        "phase2Artifacts": sorted(phase_two_artifacts),
         "phase2Error": run.get("phase_2_error"),
         "ragStorePath": run.get("rag_store_path"),
         "ragManifest": run.get("rag_manifest"),
@@ -78,6 +84,7 @@ def load_application_records(root: Path) -> dict[str, dict[str, Any]]:
             phase_two_artifacts = {
                 filename: (target / "phase-2" / filename).read_bytes()
                 for filename in manifest.get("phase2Artifacts", [])
+                if Path(filename).suffix.casefold() in TEXT_PHASE_TWO_SUFFIXES
             }
             repository_path = target / "repository.zip"
             records[target.name] = {

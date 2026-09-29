@@ -6,6 +6,7 @@ import yaml
 
 from canonical_model_generator.api_analyzer.contracts import CodeClaim, CodeSemantic
 from canonical_model_generator.api_analyzer.inspect import inspect_retrieved_target
+from canonical_model_generator.api_analyzer.token_budget import TokenBudgetExceeded
 from canonical_model_generator.api_analyzer.workflow import (
     AttributeSemantic,
     CapabilitySemantic,
@@ -15,6 +16,7 @@ from canonical_model_generator.api_analyzer.workflow import (
     EnumSemantic,
     ResponseSemantic,
     _generate_openapi,
+    _reconcile_endpoint_responses,
     load_discovery_artifact,
     run_api_analyzer_agent,
 )
@@ -37,6 +39,31 @@ def test_api_analyzer_requires_repository_rag():
         run_api_analyzer_agent(
             model.model_dump_json(by_alias=True), None, FakeAPIAnalyzerProvider()
         )
+
+
+def test_endpoint_response_reconciliation_retains_discovery_inventory_and_gap() -> None:
+    context = {"operation": {"responses": [{"statusCode": 200}]}}
+    result = EndpointSemantic(
+        operation_id="operation-delete",
+        domain=DomainSemantic(name="Assets", confidence=0.9),
+        capability=CapabilitySemantic(name="Delete", confidence=0.9),
+        summary="Delete asset",
+        description="Deletes an asset.",
+        business_purpose="Removes an asset record.",
+        request_description="Identifies the asset.",
+        responses=[
+            ResponseSemantic(status_code=204, description="Asset deleted."),
+            ResponseSemantic(status_code=404, description="Asset not found."),
+        ],
+        confidence=0.9,
+    )
+
+    reconciled = _reconcile_endpoint_responses(context, result)
+
+    assert [item.status_code for item in reconciled.responses] == [200]
+    assert reconciled.responses[0].description == "HTTP 200 response discovered by Phase 1."
+    assert "missing [200]" in reconciled.context_gaps[0]
+    assert "additional [204, 404]" in reconciled.context_gaps[0]
 
 
 class FakeAPIAnalyzerProvider:
@@ -188,10 +215,12 @@ def test_api_analyzer_embeds_semantics_and_retrieves_low_confidence_context(
     assert get_quote["responses"]["200"]["x-source"]
 
     assert set(document["components"]["schemas"]) == {
+        "AddressDto",
         "CoverageType",
         "CreateQuoteRequest",
         "QuoteResponse",
         "QuoteStatus",
+        "VehicleDto",
     }
     assert "x-acord" not in artifacts["enriched-openapi.yaml"].decode("utf-8")
 
@@ -204,13 +233,12 @@ def test_api_analyzer_embeds_semantics_and_retrieves_low_confidence_context(
     assert report["retrieval"]["provider"] == "chroma"
     assert report["retrieval"]["storage"] == "persistent-local"
     assert report["retrieval"]["chunksIndexed"] > 0
-    mermaid = artifacts["entity-relationship-diagram.mmd"].decode()
-    svg = artifacts["entity-relationship-diagram.svg"].decode()
-    assert mermaid.startswith("erDiagram\n")
-    assert "CreateQuoteRequest" in mermaid
-    assert "QuoteResponse" in mermaid
-    assert svg.startswith("<svg")
-    assert "API Analyzer entity relationships" in svg
+    assert set(artifacts) == {
+        "enriched-openapi.yaml",
+        "semantic-metadata.json",
+        "evidence-map.json",
+        "enrichment-report.json",
+    }
 
     index = ChromaRepositoryIndex(tmp_path / "saved-rag", fake_embedder)
     try:
@@ -297,6 +325,18 @@ def test_partial_openapi_keeps_parameter_and_response_model_details() -> None:
         "Request body using the discovered CreateQuoteRequest contract."
     )
     assert create_quote["requestBody"]["x-source"]
+    request_model = create_quote["requestBody"]["x-request-model"]
+    assert request_model["name"] == "CreateQuoteRequest"
+    assert request_model["schemaRef"] == "#/components/schemas/CreateQuoteRequest"
+    assert {item["name"] for item in request_model["attributes"]} == {
+        "address",
+        "applicantAge",
+        "applicantName",
+        "coverageAmount",
+        "coverageType",
+        "vehicles",
+    }
+    assert all(item["description"] for item in request_model["attributes"])
     assert get_quote["parameters"][0]["description"]
     assert get_quote["parameters"][0]["x-source"]
     assert get_quote["responses"]["200"]["description"] == (
@@ -496,6 +536,80 @@ def test_api_analyzer_stops_before_item_loops_when_provider_validation_fails(
     assert len(report["validationErrors"]) == 1
     assert "authentication failed" in report["validationErrors"][0].lower()
     assert "sk-secret-value" not in artifacts["enrichment-report.json"].decode("utf-8")
+
+
+def test_api_analyzer_continuation_reuses_completed_results(fake_embedder, tmp_path) -> None:
+    repository = Path("fixtures/RegionalQuoteApi").resolve()
+    model = reconcile(
+        extract_roslyn(
+            repository / "src/RegionalQuoteApi/RegionalQuoteApi.csproj",
+            repository,
+            "IN",
+            "regional-quote-api-fixture",
+        ),
+        discover_openapi(
+            repository / "openapi/quote-api.yaml",
+            "IN",
+            "regional-quote-api-fixture",
+            repository,
+        ),
+    )
+
+    class TrackingProvider(FakeAPIAnalyzerProvider):
+        def __init__(self, endpoint_limit: int | None = None) -> None:
+            self.endpoint_limit = endpoint_limit
+            self.endpoint_ids: list[str] = []
+
+        def analyze_endpoint(self, context: dict) -> EndpointSemantic:
+            if self.endpoint_limit is not None and len(self.endpoint_ids) >= self.endpoint_limit:
+                raise TokenBudgetExceeded(
+                    "Projected run usage exceeds the run limit; no further paid calls will be made."
+                )
+            self.endpoint_ids.append(context["operation"]["id"])
+            result = super().analyze_endpoint(context)
+            return result.model_copy(
+                update={
+                    "domain": result.domain.model_copy(update={"confidence": 0.95}),
+                    "capability": result.capability.model_copy(update={"confidence": 0.95}),
+                    "confidence": 0.95,
+                    "requested_symbols": [],
+                }
+            )
+
+    index = ChromaRepositoryIndex(tmp_path / "saved-rag", fake_embedder)
+    try:
+        index.ingest(repository, model)
+    finally:
+        index.close()
+
+    first_provider = TrackingProvider(endpoint_limit=1)
+    partial = run_api_analyzer_agent(
+        model.model_dump_json(by_alias=True),
+        repository,
+        first_provider,
+        rag_store_path=tmp_path / "saved-rag",
+        embedder=fake_embedder,
+    )
+    partial_report = json.loads(partial["enrichment-report.json"])
+    assert partial_report["stop_reason"] == "budget_exhausted"
+    assert partial_report["endpointsEnriched"] == 1
+
+    continuation_provider = TrackingProvider()
+    completed = run_api_analyzer_agent(
+        model.model_dump_json(by_alias=True),
+        repository,
+        continuation_provider,
+        rag_store_path=tmp_path / "saved-rag",
+        embedder=fake_embedder,
+        resume_artifacts=partial,
+    )
+    completed_report = json.loads(completed["enrichment-report.json"])
+
+    assert completed_report["endpointsEnriched"] == len(model.operations)
+    assert first_provider.endpoint_ids[0] not in continuation_provider.endpoint_ids
+    assert set(continuation_provider.endpoint_ids) == {item.id for item in model.operations[1:]}
+    metadata = json.loads(completed["semantic-metadata.json"])
+    assert len(metadata["endpoints"]) == len(model.operations)
 
 
 def test_repository_domain_and_single_operation_tag() -> None:

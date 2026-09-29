@@ -209,32 +209,59 @@ public static class RoslynExtractor
                         continue;
                     }
 
+                    var semanticModel = compilation.GetSemanticModel(method.SyntaxTree);
+                    var resolvedParameterTypes = method.ParameterList.Parameters.ToDictionary(
+                        parameter => parameter,
+                        parameter => parameter.Type is null
+                            ? null
+                            : ResolveProjectType(parameter.Type, semanticModel, compilation));
                     var parameters = method.ParameterList.Parameters.Select(parameter =>
                     {
                         var name = parameter.Identifier.Text;
                         var location = route.Contains($"{{{name}}}", StringComparison.OrdinalIgnoreCase)
                             ? "route"
                             : HasSyntaxAttribute(parameter.AttributeLists, "FromBody") ? "body" : "query";
+                        var resolvedType = resolvedParameterTypes[parameter];
                         return new ParameterRecord(
                             name,
-                            parameter.Type?.ToString() ?? "unknown",
+                            Display(resolvedType) ?? parameter.Type?.ToString() ?? "unknown",
                             location,
                             parameter.Default is null && parameter.Type is not NullableTypeSyntax);
                     }).ToArray();
-                    var request = method.ParameterList.Parameters.FirstOrDefault(parameter =>
-                        HasSyntaxAttribute(parameter.AttributeLists, "FromBody"))?.Type?.ToString();
+                    var requestParameter = method.ParameterList.Parameters.FirstOrDefault(parameter =>
+                        HasSyntaxAttribute(parameter.AttributeLists, "FromBody"));
+                    requestParameter ??= http.Value.Method is "POST" or "PUT" or "PATCH"
+                        ? method.ParameterList.Parameters.FirstOrDefault(parameter =>
+                            resolvedParameterTypes[parameter] is not null)
+                        : null;
+                    var requestType = requestParameter is null
+                        ? null
+                        : resolvedParameterTypes[requestParameter];
+                    if (requestType is not null)
+                    {
+                        referencedTypes.Add(requestType);
+                    }
                     var viewModelType = ViewModelType(method, compilation);
                     if (viewModelType is not null)
                     {
                         referencedTypes.Add(viewModelType);
                     }
+                    var declaredResponseType = ResolveProjectType(
+                        method.ReturnType,
+                        semanticModel,
+                        compilation);
+                    var responseType = viewModelType ?? declaredResponseType;
+                    if (responseType is not null)
+                    {
+                        referencedTypes.Add(responseType);
+                    }
                     operations.Add(new OperationRecord(
                         method.Identifier.Text,
                         http.Value.Method,
                         route,
-                        request,
+                        Display(requestType),
                         parameters,
-                        [new ResponseRecord(200, Display(viewModelType))],
+                        [new ResponseRecord(200, Display(responseType))],
                         Location(method)));
                 }
             }

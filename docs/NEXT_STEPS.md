@@ -1,12 +1,33 @@
 # Next Steps
 
-Last updated: 2026-09-28
+Last updated: 2026-09-29
 
 The first unchecked item is the recommended next action.
 
 ## Immediate
 
-- [x] **NS-P2-07 / P2.6l:** Make repository RAG mandatory at the API Analyzer boundary and generate a deterministic entity-relationship diagram as downloadable Mermaid source and SVG, with an in-tab Mermaid view.
+- [x] **NS-ALIGN-01 / A2.1-A2.7:** Implement the ACORD Alignment workspace with separate regional entity/attribute and domain/capability reviews, full/partial/not-matched status, unmatched-first percentage reporting, ACORD-or-manual decisions with required reasons, approval gating, persisted review artifacts, and the final Canonical Model/Endpoint views.
+- [x] **NS-UI-37 / P2.6w:** Make ACORD ingestion, ACORD alignment, and Canonical View structurally separate sidebar pages rather than hidden tabs; keep exactly four crawler tabs in the top tab control.
+- [x] **NS-UI-36 / P2.6v:** Keep only the four crawler stages in the visible top tab row; expose ACORD ingestion, ACORD alignment, and Canonical View as separate sidebar pages, with planned entity, domain/capability, and percentage gap views.
+- [x] **NS-ACORD-02 / A1.7:** Fix ACORD YAML upload intake so the selected file survives label/version/authorization reruns, ingestion reads the keyed uploader value, and validation identifies the exact missing input.
+- [x] **NS-UI-35 / P2.6u:** Split sidebar navigation into Crawler code and ACORD view groups, and add a gated ACORD alignment workspace describing alignment with the regionally generated entity and domain catalog.
+- [x] **NS-ACORD-01 / A1.1-A1.6:** Implement the independent ACORD OpenAPI YAML/JSON RAG pipeline with recursive endpoint/model extraction, descriptions/comments/constraints, Discovery-equivalent artifacts, persistent semantic chunks, saved-history reopening, and retrieval inspection. This operator-requested slice intentionally ran before P2.8 without performing alignment.
+- [x] **NS-UI-34 / P2.6t:** Remove per-entity normalization settings from Regional View and make the four-stage progress bar advance through partial Analyzer coverage to Regional View when analysis completes.
+- [x] **NS-P2-14 / P2.7h:** Continue a partial API Analyzer run with a fresh bounded budget while reusing validated completed semantics and sending only unfinished targets to the provider.
+- [x] **NS-UI-33 / P2.6s:** Replace the sidebar radio with compact workspace tags, remove the six workflow status cards, keep a four-stage regional progress bar, and move ACORD ingestion into a separate unnumbered RAG pipeline workspace.
+- [x] **NS-P2-13 / P2.7g:** Remove the LLM usage summary/ledger from the API Analyzer UI and remove entity-relationship source from Phase 2 generation, persistence, preview, downloads, and the artifact contract.
+- [x] **NS-P2-12 / P2.7f:** Enforce text-only LLM payloads and Phase 2 artifacts; remove SVG generation and browser-rendered diagrams. The interim Mermaid source was subsequently removed by P2.7g.
+- [x] **NS-P2-11 / P2.3a:** Reconcile provider response-status deviations to the authoritative Discovery inventory, retain every discovered status exactly once, and expose the disagreement as a review gap rather than dropping the endpoint.
+- [x] **NS-UI-32 / P2.6r:** Add a clickable sidebar agent menu for Discovery, Repository RAG, and API Analyzer that opens the corresponding main workspace while preserving selected application and repository state.
+- [x] **NS-P2-09 / P2.7e:** Show input/output/total token usage for every LLM call and let the operator configure per-request maximum input and output tokens.
+- [x] **NS-P2-10 / P2.4g:** Add `x-request-model` to every model-backed OpenAPI request body with its component reference, model description, requiredness, and complete direct attribute details, symmetric with `x-response-model`.
+- [x] **NS-UI-29 / P2.6m:** In partial API Analyzer runs, show the coverage/stop warning and let an unenriched model inherit a unique domain from its directly mapped analyzed endpoints, with the fallback source clearly labeled.
+- [x] **NS-UI-30 / P2.6n:** In the Regional catalog's all-APIs view, collapse superseded runs with the same region/application/repository identity and retain the run with the strongest semantic and Discovery coverage; keep explicit per-run selection available.
+- [x] **NS-RAG-05 / P2.6o:** Add an application/index selector directly to Repository RAG, label saved profiles as `RAG ready` or `no RAG index`, reopen the selected saved manifest/Chroma association, and show the same readiness label in the API Analyzer selector.
+- [x] **NS-RAG-06 / P2.6p:** Put the active Discovery run first in Repository RAG and label every choice with region, application, repository, run ID, current-discovery state, and RAG readiness.
+- [x] **NS-UI-31 / P2.6q:** Present the platform as one six-stage application pipeline—Discovery, Repository RAG, API Analyzer, Regional View, ACORD ingestion, and ACORD alignment—with selected-repository identity and honest complete/partial/ready/locked/planned status.
+- [x] **NS-P2-08 / P2.7d:** Document the high-level architecture and exact LLM data flow; add tiktoken preflight counting, per-request input/output ceilings, configurable run-token and request ceilings, fail-closed budget stops, and provider-reported usage in the enrichment report and UI.
+- [x] **NS-P2-07 / P2.6l:** Make repository RAG mandatory at the API Analyzer boundary. The originally generated relationship artifacts were subsequently removed by ADR-031.
 - [x] **NS-UI-26 / P2.6k:** Add an entire-region normalization approval tab with per-entity and per-field original-versus-AI decisions, optional comments, deterministic approved-name/type deduplication, complete source/API/endpoint truth mapping, and Excel plus Mermaid downloads.
 - [x] **NS-P2-06 / P2.4f:** Show each operation's request body before responses in enriched OpenAPI, including the empty request structure.
 - [x] **NS-P1-01 / R1.10:** Require a repository in Phase 1 and treat OpenAPI YAML/JSON as optional reconciliation evidence across the graph, CLI, UI, tests, and operator documentation.
@@ -56,6 +77,8 @@ The first unchecked item is the recommended next action.
 - [x] **NS-UI-14:** Remove internal IDs from all five operator-facing artifacts and enforce readable names and source locations during artifact generation.
 - [x] **NS-UI-15 / M7.7:** Restrict Phase 1 entities to endpoint-reachable, user-authored `*ViewModel` types; preserve endpoint and nested ViewModel relationships while excluding DTOs, domain models, generated types, and unrelated models.
 - [x] **NS-UI-16 / M7.8:** Expand the endpoint contract boundary to concrete `*ViewModel`, `*Request`, and `*Response` types; exclude `Base*` infrastructure models and DTOs, and show request and response model trees in the API Catalog.
+- [x] **NS-UI-27 / M7.9:** Supersede suffix-based contract filtering with endpoint reachability: retain user-authored DTOs, domain models, ViewModels, requests, responses, nested property models, collection element models, and inherited models when they are actually used by an API endpoint; continue excluding generated and unrelated types.
+- [x] **NS-UI-28 / M7.10:** Preserve endpoint request, response, collection-element, and nested models when unresolved ASP.NET Core or NuGet dependencies force controller discovery through syntax fallback.
 - [x] **NS-P2-01 / P2.1-P2.7a:** Implement the API Analyzer Agent with taxonomy-preferred or repository-derived domain/capability classification, local Chroma ingestion and bounded retrieval, endpoint/entity/attribute/enum semantics, fixed OpenAPI extensions, provenance, validation, and UI artifacts.
 - [x] **NS-P2-01a / P2.4a:** Preserve parameter/request details and source lineage in enriched OpenAPI, explicitly identify response contract models, and retain deterministic ViewModel/field descriptions during partial semantic runs.
 - [x] **NS-P2-01b / P2.4b:** Expand each response-model extension with its component reference and described direct attributes, and correct partial-run ViewModel component descriptions.

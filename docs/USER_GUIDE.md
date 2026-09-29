@@ -4,6 +4,8 @@ This guide explains how to install the prerequisites, restore the .NET and Pytho
 dependencies, run the application, and verify a local setup.
 
 For repository input, optional YAML reconciliation, and code retrieval, see [Repository RAG](REPOSITORY_RAG.md).
+For the system boundary, LLM payload inventory, and credit controls, see
+[Architecture and LLM data flow](ARCHITECTURE_AND_LLM_DATA_FLOW.md).
 
 ## 1. Prerequisites
 
@@ -140,10 +142,28 @@ Run the three tabs in order:
 The application selector restores that run's Discovery artifact, repository ZIP, and RAG index;
 it does not mix results from different repositories. Every Discovery submission starts a new
 session run, even if the upload is identical to a previous one, and does not inherit an old index.
-Completed application profiles and uploaded ZIPs are held only in the current Streamlit browser
-session. If that session ends or the server restarts, rerun Discovery and build a fresh index to
-continue. An available key is not proof it is valid: the Analyzer checks provider access when the
-run starts.
+Completed application profiles, trusted ZIPs, artifacts, and RAG associations persist under ignored
+`.applications/<run-id>/` local storage and can be reopened after a server restart. API keys and
+source-sharing consent are never persisted. An available key is not proof it is valid: the Analyzer
+checks provider access when the run starts.
+
+### Independent ACORD ingestion
+
+Open **ACORD ingestion** separately from the four-stage regional workflow:
+
+1. Enter a stable reference label and the approved ACORD version.
+2. Upload an OpenAPI 3 JSON, YAML, or YML document up to 10 MB.
+3. Confirm that the document is authorized for local ingestion and indexing.
+4. Select **Build ACORD RAG index**. The first local embedding run may need to obtain the pinned
+   Sentence Transformer model if it is not already cached.
+5. Inspect or download the API Catalog, Data Model, Relationship Graph, Validation and Enums, and
+   Lineage views. Use **Inspect ACORD retrieval** to verify the endpoint/entity chunks and source
+   pointers that a later alignment agent would receive.
+
+Successful records persist under ignored `.acord/<run-id>/` storage and can be reopened after an app
+restart. This directory contains the uploaded reference and must be protected according to the
+reference's license and your data-handling policy. The pipeline does not call an LLM, compare the
+reference with regional APIs, or produce canonical mappings.
 
 ## 7. Run deterministic discovery from the CLI
 
@@ -211,3 +231,9 @@ Then upgrade pip and retry the editable installation.
 Use the API Analyzer's session-only key override or replace `.env` with an active, approved
 `OPENAI_API_KEY`, then retry. Phase 1 Discovery and local Repository RAG remain usable without
 an OpenAI key.
+
+### ACORD ingestion cannot build the local index
+
+Confirm that the upload is an OpenAPI 3.x document, not a standalone JSON Schema or Swagger 2 file.
+Check network access for the first download of the pinned local Sentence Transformer model, then
+retry. Existing complete records remain available under **Open a previous ACORD ingestion**.

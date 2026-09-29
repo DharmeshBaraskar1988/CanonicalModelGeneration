@@ -18,6 +18,10 @@ from canonical_model_generator.api_analyzer.inspect import (
 )
 from canonical_model_generator.api_analyzer.normalization import normalize_regional_entity
 from canonical_model_generator.api_analyzer.providers.openai import OpenAISemanticProvider
+from canonical_model_generator.api_analyzer.token_budget import (
+    TokenBudgetConfig,
+    TokenBudgetExceeded,
+)
 from canonical_model_generator.api_analyzer.workflow import (
     load_discovery_artifact,
     run_api_analyzer_agent,
@@ -35,6 +39,8 @@ __all__ = [
     "OpenAISemanticProvider",
     "ResponseSemantic",
     "SemanticProvider",
+    "TokenBudgetConfig",
+    "TokenBudgetExceeded",
     "load_discovery_artifact",
     "inspect_retrieved_target",
     "inspect_retrieved_code",

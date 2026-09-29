@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
@@ -17,8 +18,34 @@ from streamlit.typing import UploadedFile
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
+from canonical_model_generator.acord_alignment import (  # noqa: E402
+    MANUAL,
+    MATCH_STATUSES,
+    NOT_MATCHED,
+    PARTIAL_MATCH,
+    USE_ACORD,
+    approve_acord_alignment,
+    build_regional_alignment_source,
+    default_alignment_decisions,
+    load_alignment_artifacts,
+    propose_acord_alignment,
+    save_alignment_artifact,
+    validate_alignment_decisions,
+)
+from canonical_model_generator.acord_rag import (  # noqa: E402
+    ACORD_ARTIFACTS,
+    AcordDocumentIndex,
+    build_acord_chunks,
+    generate_acord_artifacts,
+    parse_acord_document,
+)
+from canonical_model_generator.acord_rag.history import (  # noqa: E402
+    load_acord_records,
+    save_acord_record,
+)
 from canonical_model_generator.api_analyzer import (  # noqa: E402
     OpenAISemanticProvider,
+    TokenBudgetConfig,
     inspect_retrieved_code,
     inspect_retrieved_target,
     normalize_regional_entity,
@@ -59,6 +86,7 @@ from canonical_model_generator.repository_rag.embeddings import (  # noqa: E402
     create_embedder,
 )
 from canonical_model_generator.repository_rag.index import ChromaRepositoryIndex  # noqa: E402
+from canonical_model_generator.workflow_progress import reached_stage_count  # noqa: E402
 
 st.set_page_config(
     page_title="Insurance Canonical Model Platform",
@@ -67,6 +95,8 @@ st.set_page_config(
 )
 
 APPLICATION_HISTORY_ROOT = Path(__file__).resolve().parent / ".applications"
+ACORD_HISTORY_ROOT = Path(__file__).resolve().parent / ".acord"
+ALIGNMENT_HISTORY_ROOT = Path(__file__).resolve().parent / ".alignments"
 
 DISCOVERY_ARTIFACTS = {
     "API Catalog": "api-catalog.json",
@@ -101,8 +131,28 @@ st.session_state.setdefault("application_runs", {})
 st.session_state.setdefault("active_application_id", None)
 st.session_state.setdefault("regional_normalizations", {})
 st.session_state.setdefault("approved_regional_reviews", {})
+st.session_state.setdefault("acord_runs", {})
+st.session_state.setdefault("active_acord_id", None)
+st.session_state.setdefault("acord_results", [])
+st.session_state.setdefault("alignment_reviews", {})
+st.session_state.setdefault("active_alignment_id", None)
+st.session_state.setdefault("acord_alignment_drafts", {})
 if not st.session_state["application_runs"]:
     st.session_state["application_runs"] = load_application_records(APPLICATION_HISTORY_ROOT)
+if not st.session_state["acord_runs"]:
+    st.session_state["acord_runs"] = load_acord_records(ACORD_HISTORY_ROOT)
+if (
+    st.session_state["acord_runs"]
+    and st.session_state["active_acord_id"] not in st.session_state["acord_runs"]
+):
+    st.session_state["active_acord_id"] = next(iter(st.session_state["acord_runs"]))
+if not st.session_state["alignment_reviews"]:
+    st.session_state["alignment_reviews"] = load_alignment_artifacts(ALIGNMENT_HISTORY_ROOT)
+if (
+    st.session_state["alignment_reviews"]
+    and st.session_state["active_alignment_id"] not in st.session_state["alignment_reviews"]
+):
+    st.session_state["active_alignment_id"] = next(reversed(st.session_state["alignment_reviews"]))
 
 
 def build_artifact_bundle(artifacts: dict[str, bytes]) -> bytes:
@@ -121,6 +171,63 @@ def build_named_bundle(artifacts: dict[str, bytes]) -> bytes:
     return bundle.getvalue()
 
 
+def build_acord_bundle(artifacts: dict[str, bytes]) -> bytes:
+    bundle = BytesIO()
+    with ZipFile(bundle, "w", ZIP_DEFLATED) as archive:
+        for label, content in artifacts.items():
+            archive.writestr(ACORD_ARTIFACTS[label], content)
+    return bundle.getvalue()
+
+
+def ingest_acord_reference(
+    *,
+    source_content: bytes,
+    source_name: str,
+    reference_label: str,
+    reference_version: str,
+    progress: Callable[[str], None] | None = None,
+) -> str:
+    model = parse_acord_document(
+        source_content,
+        source_name,
+        reference_label=reference_label,
+        reference_version=reference_version,
+    )
+    artifacts = generate_acord_artifacts(model)
+    chunks = build_acord_chunks(model)
+    run_id = uuid4().hex
+    run_path = save_acord_record(
+        ACORD_HISTORY_ROOT,
+        run_id,
+        model=model,
+        artifacts=artifacts,
+        source_content=source_content,
+    )
+    index = AcordDocumentIndex(run_path / "index")
+    try:
+        stats = index.ingest(model, chunks, progress=progress)
+        manifest = index.manifest
+    finally:
+        index.close()
+    st.session_state["acord_runs"][run_id] = {
+        "profile": {
+            "runId": run_id,
+            "sourceFile": Path(source_name).name,
+            "referenceLabel": reference_label.strip(),
+            "referenceVersion": reference_version.strip(),
+            "sha256": model["source"]["sha256"],
+        },
+        "model": model,
+        "artifacts": artifacts,
+        "manifest": manifest,
+        "storagePath": str(run_path / "index"),
+        "stats": stats,
+    }
+    st.session_state["active_acord_id"] = run_id
+    st.session_state["acord_results"] = []
+    return run_id
+
+
 def openai_api_key() -> str | None:
     try:
         configured = st.secrets.get("OPENAI_API_KEY")
@@ -128,6 +235,93 @@ def openai_api_key() -> str | None:
         configured = None
     value = configured or os.getenv("OPENAI_API_KEY")
     return value.strip() if value else None
+
+
+def workflow_stages() -> list[dict[str, str]]:
+    """Describe the four-stage regional application journey."""
+    active_id = st.session_state.get("active_application_id")
+    run = st.session_state.get("application_runs", {}).get(active_id, {})
+    discovery_ready = bool(run.get("discovery_model"))
+    rag_path = run.get("rag_store_path")
+    rag_ready = bool(rag_path and Path(rag_path, "rag-manifest.json").is_file())
+    report_content = run.get("phase_2_artifacts", {}).get("enrichment-report.json")
+    report: dict[str, object] = {}
+    if report_content:
+        try:
+            report = json.loads(report_content)
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+            report = {}
+    analyzer_status = str(report.get("status", ""))
+    current_workspace = str(st.session_state.get("workflow_tabs", ""))
+    regional_selected = "Regional view" in current_workspace
+    analyzer_complete = analyzer_status == "complete"
+    return [
+        {
+            "name": "Discovery agent",
+            "state": "Complete" if discovery_ready else "Current",
+            "detail": "Repository structure and endpoint contracts"
+            if discovery_ready
+            else "Upload and analyze a trusted repository",
+        },
+        {
+            "name": "Repository RAG",
+            "state": "Complete" if rag_ready else "Ready" if discovery_ready else "Locked",
+            "detail": "Saved index for the selected repository"
+            if rag_ready
+            else "Build an index from the same Discovery repository",
+        },
+        {
+            "name": "API analyzer",
+            "state": (
+                "Complete"
+                if analyzer_status == "complete"
+                else "Partial"
+                if analyzer_status
+                else "Ready"
+                if rag_ready
+                else "Locked"
+            ),
+            "detail": (
+                f"{report.get('endpointsEnriched', 0)}/"
+                f"{report.get('endpointsDiscovered', 0)} endpoints, "
+                f"{report.get('entitiesEnriched', 0)}/"
+                f"{report.get('entitiesDiscovered', 0)} entities enriched"
+                if analyzer_status
+                else "Requires the selected repository's RAG index"
+            ),
+        },
+        {
+            "name": "Regional view",
+            "state": "Current"
+            if discovery_ready and (analyzer_complete or regional_selected)
+            else "Ready"
+            if discovery_ready
+            else "Locked",
+            "detail": "Inspect models, mappings, domains, and regional review",
+        },
+    ]
+
+
+def render_workflow_progress() -> None:
+    stages = workflow_stages()
+    reached = reached_stage_count([item["state"] for item in stages])
+    active_id = st.session_state.get("active_application_id")
+    active_run = st.session_state.get("application_runs", {}).get(active_id, {})
+    profile = active_run.get("profile", {})
+    with st.container(border=True):
+        st.subheader("Agent workflow", anchor=False)
+        if profile:
+            st.caption(
+                f"Selected pipeline: {profile.get('region')} · "
+                f"{profile.get('application')} · {profile.get('repository')} [{active_id[:6]}]"
+            )
+        else:
+            st.caption("Start with Discovery to create a selected application pipeline.")
+        partial = next((item for item in stages if item["state"] == "Partial"), None)
+        progress_text = f"{reached} of {len(stages)} stages reached"
+        if partial:
+            progress_text += f" · {partial['name']} partial: {partial['detail']}"
+        st.progress(reached / len(stages), text=progress_text)
 
 
 def activate_application(application_id: str) -> None:
@@ -204,6 +398,7 @@ def run_uploaded_semantic_generation(
     progress: Callable[[str], None] | None = None,
     rag_store_path: Path | None = None,
     embedder=None,
+    resume_artifacts: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     if repository_archive is None:
         raise ValueError("API Analyzer requires the source repository and its saved RAG index.")
@@ -222,7 +417,21 @@ def run_uploaded_semantic_generation(
             progress,
             rag_store_path=rag_store_path,
             embedder=embedder,
+            resume_artifacts=resume_artifacts,
         )
+
+
+def has_unfinished_semantic_targets(artifacts: dict[str, bytes]) -> bool:
+    report_content = artifacts.get("enrichment-report.json")
+    if not report_content:
+        return False
+    try:
+        report = json.loads(report_content)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    return report.get("status") == "partial" and any(
+        report.get(key) for key in ("missingEndpointIds", "missingEntityIds", "missingEnumIds")
+    )
 
 
 def select_web_projects(projects: tuple[str, ...], controllers: tuple[str, ...]) -> list[str]:
@@ -346,16 +555,101 @@ elif (
 ):
     activate_application(next(iter(st.session_state["application_runs"])))
 
+
 st.title("Insurance Canonical Model platform")
 
+CRAWLER_TAB_LABELS = [
+    ":material/account_tree: 1 Discovery",
+    ":material/search: 2 Repository RAG",
+    ":material/manage_search: 3 API analyzer",
+    ":material/public: 4 Regional view",
+]
+ACORD_TAB_LABELS = [
+    ":material/library_books: ACORD ingestion",
+    ":material/compare_arrows: ACORD alignment",
+    ":material/hub: Canonical view",
+]
+WORKFLOW_TAB_LABELS = CRAWLER_TAB_LABELS + ACORD_TAB_LABELS
+
+
+def open_crawler_workspace() -> None:
+    """Open a selected crawler-code workspace."""
+    selected = st.session_state.get("crawler_sidebar_menu")
+    if selected:
+        st.session_state["workflow_tabs"] = selected
+        st.session_state["crawler_tabs"] = selected
+        st.session_state["acord_sidebar_menu"] = None
+
+
+def open_acord_workspace() -> None:
+    """Open a selected ACORD workspace."""
+    selected = st.session_state.get("acord_sidebar_menu")
+    if selected:
+        st.session_state["workflow_tabs"] = selected
+        st.session_state["crawler_sidebar_menu"] = None
+
+
+def open_crawler_tab() -> None:
+    """Synchronize a visible crawler tab with the sidebar workspace state."""
+    selected = st.session_state.get("crawler_tabs")
+    if selected:
+        st.session_state["workflow_tabs"] = selected
+        st.session_state["crawler_sidebar_menu"] = selected
+        st.session_state["acord_sidebar_menu"] = None
+
+
+with st.sidebar:
+    current_workspace = st.session_state.get("workflow_tabs", CRAWLER_TAB_LABELS[0])
+    st.caption("Crawler code")
+    st.pills(
+        "Crawler workspace",
+        CRAWLER_TAB_LABELS,
+        default=current_workspace if current_workspace in CRAWLER_TAB_LABELS else None,
+        key="crawler_sidebar_menu",
+        on_change=open_crawler_workspace,
+        label_visibility="collapsed",
+    )
+    st.caption("ACORD view")
+    st.pills(
+        "ACORD workspace",
+        ACORD_TAB_LABELS,
+        default=current_workspace if current_workspace in ACORD_TAB_LABELS else None,
+        key="acord_sidebar_menu",
+        on_change=open_acord_workspace,
+        label_visibility="collapsed",
+    )
+
+if current_workspace in CRAWLER_TAB_LABELS:
+    render_workflow_progress()
+
+if "crawler_tabs" not in st.session_state:
+    st.session_state["crawler_tabs"] = (
+        current_workspace if current_workspace in CRAWLER_TAB_LABELS else CRAWLER_TAB_LABELS[0]
+    )
+
 discovery_tab, rag_tab, phase_two_tab, regional_tab = st.tabs(
-    [
-        ":material/account_tree: Discovery Agent",
-        ":material/search: Repository RAG",
-        ":material/manage_search: Phase 2 API Analyzer",
-        ":material/public: Regional catalog",
-    ]
+    CRAWLER_TAB_LABELS,
+    key="crawler_tabs",
+    on_change=open_crawler_tab,
 )
+acord_ingestion_tab = st.container(key="acord_ingestion_page")
+acord_alignment_tab = st.container(key="acord_alignment_page")
+canonical_view_tab = st.container(key="canonical_view_page")
+
+visible_page_key = {
+    ACORD_TAB_LABELS[0]: "acord_ingestion_page",
+    ACORD_TAB_LABELS[1]: "acord_alignment_page",
+    ACORD_TAB_LABELS[2]: "canonical_view_page",
+}.get(current_workspace)
+hidden_page_keys = {
+    "acord_ingestion_page",
+    "acord_alignment_page",
+    "canonical_view_page",
+} - ({visible_page_key} if visible_page_key else set())
+hidden_selectors = [f".st-key-{key}" for key in sorted(hidden_page_keys)]
+if current_workspace not in CRAWLER_TAB_LABELS:
+    hidden_selectors.append(".st-key-crawler_tabs")
+st.html(f"<style>{', '.join(hidden_selectors)} {{ display: none; }}</style>")
 
 with discovery_tab:
     st.header("Discovery Agent")
@@ -487,25 +781,18 @@ with discovery_tab:
             st.caption(f"Repository: {profile['repository']}")
             st.caption("Projects: " + ", ".join(st.session_state["discovery_projects"]))
         st.warning(
-            "Current entity coverage is limited to user-authored ViewModels and concrete request/"
-            "response models reachable from API endpoints. Base infrastructure classes, DTOs, "
-            "domain types, generated types, and unrelated models are excluded. "
+            "Current entity coverage includes user-authored request, response, DTO, domain, "
+            "ViewModel, nested property, collection-element, and inherited models reachable "
+            "from API endpoints. Generated types and unrelated models are excluded. "
             "Deep call paths, persistence, mappings, integrations, security, and Razor Pages "
             "remain open gaps. When OpenAPI is supplied, its schemas are reconciled with the "
             "repository evidence.",
             icon=":material/radar:",
         )
         st.subheader("Discovery artifact tree")
-        st.mermaid_chart(
-            """
-flowchart TD
-    REPO[Repository or OpenAPI document] --> AGENT[Discovery Agent]
-    AGENT --> CATALOG[API Catalog]
-    AGENT --> DATA[Data Model]
-    AGENT --> GRAPH[Relationship Graph]
-    AGENT --> RULES[Validation and Enums]
-    AGENT --> LINEAGE[Lineage]
-"""
+        st.markdown(
+            "Repository/OpenAPI → Discovery Agent → API Catalog, Data Model, "
+            "Relationship Graph, Validation and Enums, and Lineage."
         )
 
         for start in range(0, len(DISCOVERY_ARTIFACTS), 3):
@@ -543,6 +830,36 @@ with rag_tab:
         "Code is grouped by file, type and member, with parent and relationship links."
     )
     active_id = st.session_state["active_application_id"]
+    application_runs = st.session_state["application_runs"]
+    if application_runs:
+        rag_choices = [
+            *([active_id] if active_id in application_runs else []),
+            *(item for item in application_runs if item != active_id),
+        ]
+        rag_selected_id = st.selectbox(
+            "Select application index",
+            rag_choices,
+            index=rag_choices.index(active_id) if active_id in rag_choices else 0,
+            format_func=lambda item: (
+                f"{application_runs[item]['profile']['region']} · "
+                f"{application_runs[item]['profile']['application']} · "
+                f"{application_runs[item]['profile']['repository']} [{item[:6]}] · "
+                + ("current discovery · " if item == active_id else "")
+                + (
+                    "RAG ready"
+                    if application_runs[item].get("rag_store_path")
+                    and Path(
+                        application_runs[item]["rag_store_path"], "rag-manifest.json"
+                    ).is_file()
+                    else "no RAG index"
+                )
+            ),
+            key=f"rag_application_{active_id}",
+        )
+        if rag_selected_id != active_id:
+            activate_application(rag_selected_id)
+            st.rerun()
+        active_id = rag_selected_id
     if active_id:
         profile = st.session_state["application_runs"][active_id]["profile"]
         st.info(
@@ -631,6 +948,10 @@ with rag_tab:
             st.metric("Code chunks", stats["chunksIndexed"])
             st.metric("Relationships", stats["relationshipsIndexed"])
         st.caption(f"Saved locally: {st.session_state['rag_store_path']}")
+        st.success(
+            "Existing repository index reopened for the selected application.",
+            icon=":material/database:",
+        )
         st.caption(f"Embedding model: {rag_manifest['embedding']['model']}")
         st.download_button(
             "Download RAG manifest",
@@ -781,7 +1102,13 @@ with phase_two_tab:
             index=choices.index(active_id),
             format_func=lambda item: (
                 f"{runs[item]['profile']['application']} · {runs[item]['profile']['region']} · "
-                f"{runs[item]['profile']['repository']} [{item[:6]}]"
+                f"{runs[item]['profile']['repository']} [{item[:6]}] · "
+                + (
+                    "RAG ready"
+                    if runs[item].get("rag_store_path")
+                    and Path(runs[item]["rag_store_path"], "rag-manifest.json").is_file()
+                    else "no RAG index"
+                )
             ),
             key=f"phase2_application_{active_id}",
         )
@@ -846,6 +1173,45 @@ with phase_two_tab:
             help="The model must support Structured Outputs in the Responses API.",
             key="phase_2_openai_model",
         )
+        with st.expander("LLM usage guardrails"):
+            max_run_tokens = st.number_input(
+                "Maximum tokens for this run",
+                min_value=5_000,
+                max_value=1_000_000,
+                value=120_000,
+                step=5_000,
+                help=(
+                    "The analyzer estimates each request with tiktoken before sending it and "
+                    "stops before the projected total exceeds this ceiling."
+                ),
+            )
+            max_llm_requests = st.number_input(
+                "Maximum paid LLM requests",
+                min_value=1,
+                max_value=500,
+                value=100,
+                step=1,
+            )
+            max_input_tokens = st.number_input(
+                "Maximum input tokens per request",
+                min_value=1_000,
+                max_value=200_000,
+                value=24_000,
+                step=1_000,
+                key="phase_2_max_input_tokens",
+            )
+            max_output_tokens = st.number_input(
+                "Maximum output tokens per request",
+                min_value=500,
+                max_value=100_000,
+                value=4_000,
+                step=500,
+                key="phase_2_max_output_tokens",
+            )
+            st.caption(
+                "The provider-reported input and output count for every completed request is "
+                "written to the enrichment report."
+            )
         source_consent = st.checkbox(
             "Allow selected specification details and redacted code (when available) "
             "to be sent to OpenAI.",
@@ -871,24 +1237,51 @@ with phase_two_tab:
             st.info("Before running: " + " ".join(missing))
         else:
             st.success("Ready to analyze the selected application.")
-        rerun = bool(st.session_state["phase_2_artifacts"] or previous_error)
-        if st.button(
-            (
-                "Run API Analyzer again for selected application"
-                if rerun
-                else "Run API Analyzer Agent"
-            ),
-            type="primary",
+        previous_artifacts = dict(st.session_state["phase_2_artifacts"])
+        can_continue = has_unfinished_semantic_targets(previous_artifacts)
+        continue_clicked = False
+        if can_continue:
+            st.caption(
+                "This run is partial. Continue reuses completed semantic results and starts a "
+                "fresh token budget only for unfinished targets."
+            )
+            continue_clicked = st.button(
+                "Continue remaining analysis",
+                type="primary",
+                icon=":material/play_arrow:",
+                key="continue_phase_2_semantic_openapi",
+                disabled=bool(missing),
+                help=(
+                    "Reuse completed endpoint, entity, and enum results and call the LLM only "
+                    "for unfinished targets with a fresh run budget."
+                ),
+            )
+        rerun = bool(previous_artifacts or previous_error)
+        restart_clicked = st.button(
+            ("Restart API Analyzer from beginning" if rerun else "Run API Analyzer Agent"),
+            type="secondary" if can_continue else "primary",
             icon=":material/auto_awesome:",
             key="run_phase_2_semantic_openapi",
             disabled=bool(missing),
-        ):
-            st.session_state["phase_2_artifacts"] = {}
-            runs[active_id]["phase_2_artifacts"] = {}
+        )
+        if continue_clicked or restart_clicked:
+            resume_artifacts = previous_artifacts if continue_clicked else None
+            if restart_clicked:
+                st.session_state["phase_2_artifacts"] = {}
+                runs[active_id]["phase_2_artifacts"] = {}
             st.session_state["phase_2_error"] = None
             runs[active_id]["phase_2_error"] = None
             try:
-                provider = OpenAISemanticProvider(api_key=api_key or "", model=openai_model.strip())
+                provider = OpenAISemanticProvider(
+                    api_key=api_key or "",
+                    model=openai_model.strip(),
+                    token_budget=TokenBudgetConfig(
+                        max_run_tokens=int(max_run_tokens),
+                        max_requests=int(max_llm_requests),
+                        max_input_tokens_per_request=int(max_input_tokens),
+                        max_output_tokens_per_request=int(max_output_tokens),
+                    ),
+                )
                 adapter = None
                 if st.session_state["rag_manifest"]:
                     profile = EmbeddingConfig.model_validate(
@@ -907,6 +1300,7 @@ with phase_two_tab:
                         if st.session_state["rag_store_path"]
                         else None,
                         embedder=adapter,
+                        resume_artifacts=resume_artifacts,
                     )
                     st.session_state["phase_2_artifacts"] = generated
                     runs[active_id]["phase_2_artifacts"] = generated
@@ -940,7 +1334,11 @@ with phase_two_tab:
                 st.error(f"Semantic OpenAPI generation failed: {failure}")
                 st.rerun()
 
-        phase_2_artifacts: dict[str, bytes] = st.session_state["phase_2_artifacts"]
+        phase_2_artifacts: dict[str, bytes] = {
+            filename: content
+            for filename, content in st.session_state["phase_2_artifacts"].items()
+            if Path(filename).suffix.casefold() in {".json", ".yaml", ".yml"}
+        }
         if phase_2_artifacts:
             report = json.loads(phase_2_artifacts["enrichment-report.json"])
             with st.container(horizontal=True):
@@ -968,25 +1366,9 @@ with phase_two_tab:
                     "partial. Review enrichment-report.json for validation and coverage gaps.",
                     icon=":material/warning:",
                 )
-            mermaid_artifact = phase_2_artifacts.get("entity-relationship-diagram.mmd")
-            if mermaid_artifact:
-                st.subheader("Entity relationship diagram", anchor=False)
-                st.caption(
-                    "This view and both downloads are generated from deterministic Discovery "
-                    "entities and relationships; semantic descriptions do not alter the structure."
-                )
-                st.mermaid_chart(mermaid_artifact.decode("utf-8"))
             with st.container(horizontal=True):
                 for filename, content in phase_2_artifacts.items():
-                    mime = (
-                        "application/yaml"
-                        if filename.endswith(".yaml")
-                        else "image/svg+xml"
-                        if filename.endswith(".svg")
-                        else "text/plain"
-                        if filename.endswith(".mmd")
-                        else "application/json"
-                    )
+                    mime = "application/yaml" if filename.endswith(".yaml") else "application/json"
                     st.download_button(
                         f"Download {filename}",
                         data=content,
@@ -1008,10 +1390,6 @@ with phase_two_tab:
             )
             if preview_name.endswith(".yaml"):
                 st.code(phase_2_artifacts[preview_name].decode("utf-8"), language="yaml")
-            elif preview_name.endswith(".mmd"):
-                st.code(phase_2_artifacts[preview_name].decode("utf-8"), language="text")
-            elif preview_name.endswith(".svg"):
-                st.image(phase_2_artifacts[preview_name])
             else:
                 st.json(json.loads(phase_2_artifacts[preview_name]), expanded=2)
 
@@ -1067,7 +1445,27 @@ with regional_tab:
         domain_tree = regional_domain_tree(
             runs, region=selected_region, application_id=selected_scope
         )
-        api_count = len(regional_runs) if selected_scope is None else 1
+        selected_run_ids = list(regional_runs) if selected_scope is None else [selected_scope]
+        for run_id in selected_run_ids:
+            report_content = runs[run_id].get("phase_2_artifacts", {}).get("enrichment-report.json")
+            if not report_content:
+                continue
+            try:
+                report = json.loads(report_content)
+            except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+                continue
+            if report.get("status") == "complete":
+                continue
+            st.warning(
+                f"{runs[run_id]['profile']['application']} has partial API Analyzer coverage: "
+                f"{report.get('endpointsEnriched', 0)}/{report.get('endpointsDiscovered', 0)} "
+                f"endpoints and {report.get('entitiesEnriched', 0)}/"
+                f"{report.get('entitiesDiscovered', 0)} models were enriched. "
+                f"Stop reason: {report.get('stop_reason', 'not reported')}. "
+                "Pending rows remain marked Awaiting API Analyzer.",
+                icon=":material/warning:",
+            )
+        api_count = len(model_tree) if selected_scope is None else 1
         with st.container(horizontal=True):
             st.metric("APIs", api_count)
             st.metric("Endpoints", len(endpoint_rows))
@@ -1089,27 +1487,6 @@ with regional_tab:
                 "Expand the regional hierarchy to trace each API contract model to its "
                 "request or response endpoints and fields."
             )
-            with st.expander("Entity and attribute normalization settings"):
-                st.caption(
-                    "Generate review-only normalized names and descriptions inside one regional "
-                    "API. This does not change Discovery or compare APIs."
-                )
-                normalization_key_override = st.text_input(
-                    "OpenAI API key (optional session override)",
-                    type="password",
-                    key="regional_normalization_key",
-                )
-                normalization_model = st.text_input(
-                    "Normalization model",
-                    value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                    key="regional_normalization_model",
-                )
-                normalization_consent = st.checkbox(
-                    "Allow this entity, its attributes, and existing API Analyzer descriptions "
-                    "to be sent to OpenAI.",
-                    key="regional_normalization_consent",
-                )
-            normalization_api_key = normalization_key_override.strip() or openai_api_key()
             if model_tree and model_rows:
                 st.markdown(f"#### :material/public: {selected_region}")
                 for branch in model_tree:
@@ -1130,60 +1507,12 @@ with regional_tab:
                                             f"Confidence: {model_branch['confidence']:.2f}",
                                             color="blue",
                                         )
+                                st.caption(f"Domain source: {model_branch['domainSource']}")
                                 st.markdown(
                                     f"**Business concept:** {model_branch['businessConcept']}"
                                 )
                                 st.markdown(f"**Summary:** {model_branch['summary']}")
                                 st.markdown(f"**Description:** {model_branch['description']}")
-                                normalization_id = f"{branch['runId']}:{model_branch['id']}"
-                                if st.button(
-                                    "Normalize entity and attributes",
-                                    icon=":material/auto_fix_high:",
-                                    key=f"normalize_{branch['runId']}_{model_branch['id']}",
-                                    disabled=(
-                                        not normalization_consent
-                                        or not normalization_api_key
-                                        or not normalization_model.strip()
-                                    ),
-                                ):
-                                    try:
-                                        selected_run = runs[branch["runId"]]
-                                        provider = OpenAISemanticProvider(
-                                            api_key=normalization_api_key or "",
-                                            model=normalization_model.strip(),
-                                        )
-                                        with st.spinner("Normalizing entity and attributes..."):
-                                            proposal = normalize_regional_entity(
-                                                selected_run["discovery_model"],
-                                                model_branch["id"],
-                                                selected_run.get("phase_2_artifacts", {}).get(
-                                                    "semantic-metadata.json"
-                                                ),
-                                                provider,
-                                            )
-                                        st.session_state["regional_normalizations"][
-                                            normalization_id
-                                        ] = proposal
-                                        st.rerun()
-                                    except Exception as exc:
-                                        st.error(
-                                            "Normalization failed. Check provider access. "
-                                            f"Error: {type(exc).__name__}."
-                                        )
-                                proposal = st.session_state["regional_normalizations"].get(
-                                    normalization_id
-                                )
-                                if proposal:
-                                    st.markdown(
-                                        f"**Normalized entity name:** {proposal['normalizedName']}"
-                                    )
-                                    st.markdown(
-                                        "**Normalized description:** "
-                                        f"{proposal['normalizedDescription']}"
-                                    )
-                                    st.caption(
-                                        f"Normalization confidence: {proposal['confidence']:.2f}"
-                                    )
                                 st.markdown("**Endpoint mappings**")
                                 if model_branch["mappings"]:
                                     st.dataframe(
@@ -1195,31 +1524,10 @@ with regional_tab:
                                     st.caption("No direct endpoint mapping was discovered.")
                                 st.markdown("**Fields**")
                                 if model_branch["fields"]:
-                                    normalized_attributes = {
-                                        item["attributeId"]: item
-                                        for item in (proposal or {}).get("attributes", [])
-                                    }
-                                    field_rows = []
-                                    for field in model_branch["fields"]:
-                                        normalized = normalized_attributes.get(field["id"], {})
-                                        field_rows.append(
-                                            {
-                                                key: value
-                                                for key, value in {
-                                                    **field,
-                                                    "Normalized name": normalized.get(
-                                                        "normalizedName", "Not normalized"
-                                                    ),
-                                                    "Normalized description": normalized.get(
-                                                        "normalizedDescription", "Not normalized"
-                                                    ),
-                                                    "Normalization confidence": normalized.get(
-                                                        "confidence"
-                                                    ),
-                                                }.items()
-                                                if key != "id"
-                                            }
-                                        )
+                                    field_rows = [
+                                        {key: value for key, value in field.items() if key != "id"}
+                                        for field in model_branch["fields"]
+                                    ]
                                     st.dataframe(
                                         field_rows,
                                         hide_index=True,
@@ -1230,14 +1538,6 @@ with regional_tab:
                                                 min_value=0,
                                                 max_value=1,
                                                 format="%.2f",
-                                            ),
-                                            "Normalization confidence": (
-                                                st.column_config.NumberColumn(
-                                                    "Normalization confidence",
-                                                    min_value=0,
-                                                    max_value=1,
-                                                    format="%.2f",
-                                                )
                                             ),
                                         },
                                     )
@@ -1548,3 +1848,643 @@ with regional_tab:
                             icon=":material/download:",
                             key=f"download_regional_mermaid_{selected_region}",
                         )
+
+with acord_ingestion_tab:
+    st.header("ACORD ingestion")
+    st.info(
+        "ACORD ingestion is a separate RAG pipeline. It is not step 5 of the regional API "
+        "pipeline, and it does not perform regional alignment or canonical generation.",
+        icon=":material/info:",
+    )
+    st.caption(
+        "Upload an authorized ACORD OpenAPI 3 YAML/JSON document. The pipeline extracts API "
+        "endpoints, recursively nested entities and attributes, descriptions, $comment/vendor "
+        "notes, constraints, and source lineage into its own persistent retrieval index."
+    )
+    acord_runs = st.session_state["acord_runs"]
+    if acord_runs:
+        with st.expander("Open a previous ACORD ingestion", expanded=False):
+            saved_acord_id = st.selectbox(
+                "Saved ACORD reference",
+                list(acord_runs),
+                format_func=lambda item: (
+                    f"{acord_runs[item]['profile']['referenceLabel']} · "
+                    f"{acord_runs[item]['profile']['referenceVersion']} · "
+                    f"{acord_runs[item]['profile']['sourceFile']} [{item[:6]}]"
+                ),
+                key="saved_acord_reference",
+            )
+            if st.button(
+                "Open saved ACORD reference",
+                icon=":material/history:",
+                key="open_saved_acord_reference",
+            ):
+                st.session_state["active_acord_id"] = saved_acord_id
+                st.session_state["acord_results"] = []
+                st.rerun()
+
+    with st.container(border=True):
+        st.subheader("Reference details", anchor=False)
+        reference_column, version_column = st.columns(2, gap="large")
+        with reference_column:
+            acord_label = st.text_input(
+                "ACORD reference label",
+                placeholder="ACORD policy API",
+                help="A stable name for this independently ingested standards reference.",
+                key="acord_reference_label",
+            )
+        with version_column:
+            acord_version = st.text_input(
+                "Approved reference version",
+                placeholder="2026.1",
+                help="The approved ACORD release or package version used for this ingestion.",
+                key="acord_reference_version",
+            )
+        acord_file: UploadedFile | None = st.file_uploader(
+            "ACORD OpenAPI document",
+            type=["json", "yaml", "yml"],
+            max_upload_size=10,
+            help="OpenAPI 3.x JSON or YAML, up to 10 MB.",
+            key="acord_document",
+        )
+        selected_acord_file = acord_file or st.session_state.get("acord_document")
+        if selected_acord_file is not None:
+            st.caption(
+                f"Selected specification: {selected_acord_file.name} · "
+                f"{len(selected_acord_file.getvalue()):,} bytes"
+            )
+        usage_authorized = st.checkbox(
+            "I confirm that this ACORD document is approved for local ingestion and indexing.",
+            key="acord_usage_authorized",
+        )
+        ingest_clicked = st.button(
+            "Build ACORD RAG index",
+            type="primary",
+            icon=":material/library_add:",
+            key="build_acord_rag_index",
+        )
+
+    if ingest_clicked:
+        missing_inputs = []
+        if not acord_label.strip():
+            missing_inputs.append("reference label")
+        if not acord_version.strip():
+            missing_inputs.append("approved version")
+        if selected_acord_file is None:
+            missing_inputs.append("ACORD YAML/JSON file")
+        if missing_inputs:
+            st.error("Required input missing: " + ", ".join(missing_inputs) + ".")
+        elif not usage_authorized:
+            st.error("Confirm that the ACORD document is approved for local ingestion.")
+        else:
+            try:
+                with st.status(
+                    "Building the independent ACORD RAG pipeline...", expanded=True
+                ) as status:
+                    st.write("Parsing OpenAPI endpoints and recursive model structure")
+                    st.write(
+                        "Preserving descriptions, comments, constraints, and JSON-pointer lineage"
+                    )
+                    st.write("Creating endpoint/entity chunks and the local semantic index")
+                    ingest_acord_reference(
+                        source_content=selected_acord_file.getvalue(),
+                        source_name=selected_acord_file.name,
+                        reference_label=acord_label,
+                        reference_version=acord_version,
+                        progress=st.write,
+                    )
+                    status.update(
+                        label="ACORD ingestion complete", state="complete", expanded=False
+                    )
+            except (OSError, RuntimeError, ValueError) as exc:
+                st.error(str(exc))
+
+    active_acord_id = st.session_state.get("active_acord_id")
+    active_acord = acord_runs.get(active_acord_id)
+    if active_acord:
+        model = active_acord["model"]
+        summary = model["summary"]
+        stats = active_acord["manifest"]["stats"]
+        with st.container(border=True):
+            st.badge("ACORD RAG ready", color="green", icon=":material/check:")
+            profile = active_acord["profile"]
+            st.markdown(
+                f"**{profile['referenceLabel']}** · {profile['referenceVersion']} · "
+                f"{profile['sourceFile']}"
+            )
+            metric_columns = st.columns(4)
+            metric_columns[0].metric("Endpoints", summary["endpointCount"])
+            metric_columns[1].metric("Entities", summary["entityCount"])
+            metric_columns[2].metric("Attributes", summary["attributeCount"])
+            metric_columns[3].metric("RAG chunks", stats["chunksIndexed"])
+            st.caption(
+                "Index: persistent local Chroma · "
+                f"Embedding: {stats['embedding']} · Snapshot: "
+                f"{active_acord['manifest']['snapshotId'][:12]}"
+            )
+
+        st.subheader("ACORD artifact tree")
+        st.markdown(
+            "ACORD OpenAPI → ACORD ingestion → API Catalog, Data Model, Relationship Graph, "
+            "Validation and Enums, and Lineage."
+        )
+        acord_artifacts: dict[str, bytes] = active_acord["artifacts"]
+        for start in range(0, len(ACORD_ARTIFACTS), 3):
+            with st.container(horizontal=True):
+                for label in list(ACORD_ARTIFACTS)[start : start + 3]:
+                    filename = ACORD_ARTIFACTS[label]
+                    with st.container(border=True):
+                        st.badge("Generated", color="green", icon=":material/check:")
+                        st.markdown(f"**{label}**")
+                        st.download_button(
+                            "Download JSON",
+                            data=acord_artifacts[label],
+                            file_name=filename,
+                            mime="application/json",
+                            icon=":material/download:",
+                            key=f"download_acord_{active_acord_id}_{filename}",
+                        )
+        with st.container(horizontal=True):
+            st.download_button(
+                "Download all five artifacts",
+                data=build_acord_bundle(acord_artifacts),
+                file_name="acord-ingestion-artifacts.zip",
+                mime="application/zip",
+                type="primary",
+                icon=":material/folder_zip:",
+                key=f"download_all_acord_{active_acord_id}",
+            )
+            st.download_button(
+                "Download RAG manifest",
+                data=(json.dumps(active_acord["manifest"], indent=2, sort_keys=True) + "\n").encode(
+                    "utf-8"
+                ),
+                file_name="acord-rag-manifest.json",
+                mime="application/json",
+                icon=":material/download:",
+                key=f"download_acord_manifest_{active_acord_id}",
+            )
+        acord_preview = st.selectbox(
+            "Preview ACORD artifact",
+            list(acord_artifacts),
+            key="acord_artifact_preview",
+        )
+        st.json(json.loads(acord_artifacts[acord_preview]), expanded=2)
+
+        st.subheader("Inspect ACORD retrieval")
+        st.caption(
+            "Search the independent index to inspect the exact endpoint/entity chunks that a "
+            "later alignment agent would receive."
+        )
+        with st.form("acord_retrieval", border=False):
+            acord_query = st.text_input(
+                "Search endpoints, entities, attributes, descriptions, or constraints",
+                placeholder="policy postal code constraint",
+                key="acord_query",
+            )
+            acord_search = st.form_submit_button("Search ACORD index", icon=":material/search:")
+        if acord_search:
+            try:
+                acord_index = AcordDocumentIndex(Path(active_acord["storagePath"]))
+                try:
+                    st.session_state["acord_results"] = acord_index.query(acord_query)
+                finally:
+                    acord_index.close()
+            except (OSError, RuntimeError, ValueError) as exc:
+                st.error(str(exc))
+        for rank, result in enumerate(st.session_state["acord_results"], start=1):
+            with st.expander(
+                f"{rank}. {result['kind']} · {result['aliases'][0]} · {result['retrievalReason']}"
+            ):
+                st.caption(f"Source: {profile['sourceFile']}{result['sourcePointer']}")
+                st.code(result["text"], language="text")
+
+
+def _alignment_review_rows(
+    matches: list[dict[str, object]],
+    decisions: dict[str, dict[str, object]],
+    *,
+    child_key: str,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    parent_rows: list[dict[str, object]] = []
+    child_rows: list[dict[str, object]] = []
+    for match in matches:
+        match_id = str(match["regionalId"])
+        decision = decisions[match_id]
+        candidate = match.get("acordCandidate") or {}
+        gaps = match.get("unmatchedDetails") or {}
+        parent_rows.append(
+            {
+                "ID": match_id,
+                "Regional": match["regionalName"],
+                "Regional description": match.get("regionalDescription") or "",
+                "ACORD candidate": candidate.get("name", "No candidate"),
+                "ACORD description": candidate.get("description", ""),
+                "ACORD comments": json.dumps(candidate.get("comments", [])),
+                "Status": match["status"],
+                "Match %": match["matchPercent"],
+                "Regional gaps": ", ".join(
+                    gaps.get("regionalAttributes", gaps.get("regionalCapabilities", []))
+                )
+                or "—",
+                "ACORD-only": ", ".join(
+                    gaps.get("acordAttributes", gaps.get("acordCapabilities", []))
+                )
+                or "—",
+                "Decision": decision["selection"],
+                "Manual canonical name": decision["manualName"],
+                "Reviewer reason": decision["reason"],
+            }
+        )
+        for child in match.get(child_key, []):
+            child_id = str(child["regionalId"])
+            child_decision = decision[child_key][child_id]
+            child_candidate = child.get("acordCandidate") or {}
+            child_rows.append(
+                {
+                    "Parent ID": match_id,
+                    "ID": child_id,
+                    "Parent": match["regionalName"],
+                    "Regional": child["regionalName"],
+                    "Regional type": child.get("regionalType", ""),
+                    "Regional description": child.get("regionalDescription") or "",
+                    "ACORD candidate": child_candidate.get("name", "No candidate"),
+                    "ACORD type": child_candidate.get("type", ""),
+                    "ACORD description": child_candidate.get("description", ""),
+                    "ACORD constraints": json.dumps(
+                        child_candidate.get("constraints", {}), sort_keys=True
+                    ),
+                    "Status": child["status"],
+                    "Match %": child["matchPercent"],
+                    "Decision": child_decision["selection"],
+                    "Manual canonical name": child_decision["manualName"],
+                    "Reviewer reason": child_decision["reason"],
+                }
+            )
+    return parent_rows, child_rows
+
+
+def _render_alignment_editor(
+    *,
+    title: str,
+    matches: list[dict[str, object]],
+    decisions: dict[str, dict[str, object]],
+    child_key: str,
+    child_label: str,
+    context: str,
+) -> None:
+    selected_statuses = st.pills(
+        "Show match status",
+        MATCH_STATUSES,
+        default=[PARTIAL_MATCH, NOT_MATCHED],
+        selection_mode="multi",
+        key=f"{context}_status",
+    )
+    visible_statuses = set(selected_statuses or MATCH_STATUSES)
+    visible_matches = [item for item in matches if item["status"] in visible_statuses]
+    parent_rows, child_rows = _alignment_review_rows(
+        visible_matches, decisions, child_key=child_key
+    )
+    st.markdown(f"#### {title}")
+    if not parent_rows:
+        st.info("No results match the selected status filter.")
+        return
+    st.caption(
+        "Unmatched and partial rows are selected initially. Choose the ACORD standard or enter "
+        "a manual canonical name. A reviewer reason is required for every non-full or manual "
+        "decision."
+    )
+    common_config = {
+        "ID": None,
+        "Parent ID": None,
+        "Decision": st.column_config.SelectboxColumn(options=[USE_ACORD, MANUAL], required=True),
+        "Match %": st.column_config.NumberColumn(format="%.1f%%"),
+    }
+    edited_parents = st.data_editor(
+        parent_rows,
+        hide_index=True,
+        width="stretch",
+        key=f"{context}_parents",
+        disabled=[
+            "ID",
+            "Regional",
+            "Regional description",
+            "ACORD candidate",
+            "ACORD description",
+            "ACORD comments",
+            "Status",
+            "Match %",
+            "Regional gaps",
+            "ACORD-only",
+        ],
+        column_config=common_config,
+    )
+    for row in edited_parents:
+        decisions[row["ID"]].update(
+            {
+                "selection": row["Decision"],
+                "manualName": row["Manual canonical name"],
+                "reason": row["Reviewer reason"],
+            }
+        )
+    st.markdown(f"**{child_label} details and decisions**")
+    if not child_rows:
+        st.info(f"No {child_label.lower()} are present for these rows.")
+        return
+    edited_children = st.data_editor(
+        child_rows,
+        hide_index=True,
+        width="stretch",
+        key=f"{context}_children",
+        disabled=[
+            "Parent ID",
+            "ID",
+            "Parent",
+            "Regional",
+            "Regional type",
+            "Regional description",
+            "ACORD candidate",
+            "ACORD type",
+            "ACORD description",
+            "ACORD constraints",
+            "Status",
+            "Match %",
+        ],
+        column_config=common_config,
+    )
+    for row in edited_children:
+        decisions[row["Parent ID"]][child_key][row["ID"]].update(
+            {
+                "selection": row["Decision"],
+                "manualName": row["Manual canonical name"],
+                "reason": row["Reviewer reason"],
+            }
+        )
+
+
+def render_acord_alignment() -> None:
+    st.header("ACORD alignment")
+    st.caption(
+        "Compare a regional catalog with an accepted ACORD reference, resolve each mapping, "
+        "and approve a separate canonical artifact without changing either source."
+    )
+    regions = sorted(
+        {
+            run.get("profile", {}).get("region")
+            for run in st.session_state["application_runs"].values()
+            if run.get("discovery_model") and run.get("profile", {}).get("region")
+        }
+    )
+    acord_runs = st.session_state["acord_runs"]
+    if not regions or not acord_runs:
+        st.info(
+            "Alignment requires at least one regional Discovery catalog and one completed "
+            "ACORD ingestion.",
+            icon=":material/info:",
+        )
+        return
+
+    selection_columns = st.columns(2, gap="large")
+    with selection_columns[0]:
+        region = st.selectbox(
+            "Regional catalog",
+            regions,
+            format_func=lambda item: f"{item} · {REGIONS.get(item, item)}",
+            key="alignment_region",
+        )
+    with selection_columns[1]:
+        acord_run_id = st.selectbox(
+            "ACORD reference",
+            list(acord_runs),
+            format_func=lambda item: (
+                f"{acord_runs[item]['profile']['referenceLabel']} · "
+                f"{acord_runs[item]['profile']['referenceVersion']} [{item[:6]}]"
+            ),
+            key="alignment_acord_reference",
+        )
+
+    model_tree = regional_model_tree(st.session_state["application_runs"], region=region)
+    domain_tree = regional_domain_tree(st.session_state["application_runs"], region=region)
+    _, endpoint_rows = regional_catalog_rows(st.session_state["application_runs"], region=region)
+    approved_region = st.session_state["approved_regional_reviews"].get(region)
+    regional_source = build_regional_alignment_source(
+        region,
+        model_tree,
+        approved_region["review"] if approved_region else None,
+    )
+    if not approved_region:
+        st.warning(
+            "Regional View is not approved. This review uses a deterministic projection of "
+            "the current catalog; approve Regional View first for governed regional names."
+        )
+    if any(item["name"] == "Awaiting API Analyzer" for item in domain_tree):
+        st.warning(
+            "Some domain/capability values still await API Analyzer and will require a manual "
+            "alignment decision."
+        )
+    proposal = propose_acord_alignment(
+        region=region,
+        regional_source=regional_source,
+        regional_domain_tree=domain_tree,
+        regional_endpoints=endpoint_rows,
+        acord_model=acord_runs[acord_run_id]["model"],
+        acord_run_id=acord_run_id,
+    )
+    digest = sha256(json.dumps(proposal, sort_keys=True).encode()).hexdigest()[:12]
+    context = f"{region}_{acord_run_id}_{digest}"
+    decisions = st.session_state["acord_alignment_drafts"].setdefault(
+        context, default_alignment_decisions(proposal)
+    )
+    summary = proposal["matchSummary"]
+    metrics = st.columns(5)
+    metrics[0].metric("Matched coverage", f"{summary['matchedPercent']:.1f}%")
+    metrics[1].metric("Unmatched", f"{summary['unmatchedPercent']:.1f}%")
+    metrics[2].metric("Full matches", summary["fullMatch"])
+    metrics[3].metric("Partial matches", summary["partialMatch"])
+    metrics[4].metric("Not matched", summary["notMatched"])
+    st.caption(
+        "Coverage weights full matches as 1 and partial matches as 0.5; approval requires an "
+        "explicit decision for every item."
+    )
+
+    entity_tab, domain_tab = st.tabs(
+        ["Regional entities and attributes", "Domains and capabilities"],
+        key="alignment_review_tabs",
+        on_change="rerun",
+    )
+    with entity_tab:
+        _render_alignment_editor(
+            title="Entity match results",
+            matches=proposal["entities"],
+            decisions=decisions["entities"],
+            child_key="attributes",
+            child_label="Attribute",
+            context=f"entity_{context}",
+        )
+    with domain_tab:
+        _render_alignment_editor(
+            title="Domain match results",
+            matches=proposal["domains"],
+            decisions=decisions["domains"],
+            child_key="capabilities",
+            child_label="Capability",
+            context=f"domain_{context}",
+        )
+
+    st.divider()
+    st.markdown("#### Approve canonical alignment")
+    errors = validate_alignment_decisions(proposal, decisions)
+    if errors:
+        st.error(f"{len(errors)} review decision(s) remain unresolved.")
+        st.markdown("\n".join(f"- {error}" for error in errors[:10]))
+    confirmed = st.checkbox(
+        "I reviewed all entity, attribute, domain, and capability decisions and approve this "
+        "canonical alignment.",
+        key=f"alignment_confirmed_{context}",
+    )
+    if st.button(
+        "Approve alignment and generate canonical model",
+        type="primary",
+        icon=":material/verified:",
+        disabled=bool(errors) or not confirmed,
+        key=f"approve_alignment_{context}",
+    ):
+        artifact = approve_acord_alignment(proposal, decisions)
+        alignment_id = uuid4().hex
+        save_alignment_artifact(ALIGNMENT_HISTORY_ROOT, alignment_id, artifact)
+        st.session_state["alignment_reviews"][alignment_id] = artifact
+        st.session_state["active_alignment_id"] = alignment_id
+        st.success("Approved. Open Canonical view to inspect the model and endpoints.")
+
+
+def render_canonical_view() -> None:
+    st.header("Canonical view")
+    st.caption(
+        "Inspect canonical entities and endpoints generated only from approved ACORD alignment "
+        "decisions."
+    )
+    alignments = st.session_state["alignment_reviews"]
+    if not alignments:
+        st.info(
+            "No canonical model is approved yet. Resolve and approve an ACORD alignment first.",
+            icon=":material/info:",
+        )
+        return
+    alignment_ids = list(reversed(alignments))
+    selected_id = st.selectbox(
+        "Approved canonical alignment",
+        alignment_ids,
+        index=(
+            alignment_ids.index(st.session_state["active_alignment_id"])
+            if st.session_state["active_alignment_id"] in alignments
+            else 0
+        ),
+        format_func=lambda item: (
+            f"{alignments[item]['region']} · "
+            f"{alignments[item]['acordReference'].get('referenceLabel', 'ACORD')} "
+            f"{alignments[item]['acordReference'].get('referenceVersion', '')} [{item[:6]}]"
+        ),
+        key="approved_canonical_alignment",
+    )
+    st.session_state["active_alignment_id"] = selected_id
+    artifact = alignments[selected_id]
+    summary = artifact["summary"]
+    metrics = st.columns(5)
+    metrics[0].metric("Canonical entities", summary["canonicalEntities"])
+    metrics[1].metric("Attributes", summary["canonicalAttributes"])
+    metrics[2].metric("Domains", summary["canonicalDomains"])
+    metrics[3].metric("Capabilities", summary["canonicalCapabilities"])
+    metrics[4].metric("Endpoints", summary["canonicalEndpoints"])
+    entity_tab, endpoint_tab, mapping_tab = st.tabs(
+        ["Canonical model", "Canonical endpoints", "Approval mappings"],
+        key="canonical_result_tabs",
+        on_change="rerun",
+    )
+    with entity_tab:
+        for entity in artifact["canonicalModel"]["entities"]:
+            with st.expander(
+                f"{entity['name']} · {len(entity['attributes'])} attributes · "
+                f"{entity['matchStatus']}"
+            ):
+                st.write(entity.get("description") or "No description available.")
+                st.dataframe(
+                    [
+                        {
+                            "Attribute": field["name"],
+                            "Type": field["type"],
+                            "Required": field["required"],
+                            "Description": field.get("description"),
+                            "Constraints": json.dumps(field.get("constraints", {}), sort_keys=True),
+                            "Standard": field["standard"],
+                            "Match": field["matchStatus"],
+                            "Reason": field["reviewerReason"],
+                        }
+                        for field in entity["attributes"]
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                )
+    with endpoint_tab:
+        endpoint_rows = [
+            {
+                "API": endpoint["api"],
+                "Operation": endpoint["operation"],
+                "Method": endpoint["method"],
+                "Route": endpoint["route"],
+                "Domain": endpoint["domain"],
+                "Capability": endpoint["capability"],
+                "Approved entities": ", ".join(
+                    f"{item['entity']} ({item['usage']})" for item in endpoint["entities"]
+                )
+                or "No mapped entity",
+                "Description": endpoint.get("description"),
+            }
+            for endpoint in artifact["canonicalEndpoints"]
+        ]
+        st.dataframe(endpoint_rows, hide_index=True, width="stretch")
+    with mapping_tab:
+        st.dataframe(artifact["alignmentMappings"], hide_index=True, width="stretch")
+    st.download_button(
+        "Download approved canonical model",
+        data=(json.dumps(artifact, indent=2, sort_keys=True) + "\n").encode(),
+        file_name=f"{artifact['region'].lower()}-canonical-alignment.json",
+        mime="application/json",
+        type="primary",
+        icon=":material/download:",
+        key=f"download_canonical_alignment_{selected_id}",
+    )
+
+
+with acord_alignment_tab:
+    render_acord_alignment()
+
+with canonical_view_tab:
+    render_canonical_view()
+
+if False:  # Retained temporarily to keep the former placeholder outside the live UI.
+    st.header("Canonical view")
+    st.badge("Planned", color="gray", icon=":material/schedule:")
+    st.caption(
+        "Review the future ACORD-to-regional alignment without changing either source catalog."
+    )
+    entity_column, domain_column, gap_column = st.columns(3)
+    with entity_column.container(border=True, height="stretch"):
+        st.subheader("Entity alignment", anchor=False)
+        st.markdown(
+            "Compare ACORD entities and attributes with the approved regional entity catalog."
+        )
+        st.badge("Awaiting alignment", color="gray", icon=":material/hourglass_empty:")
+    with domain_column.container(border=True, height="stretch"):
+        st.subheader("Domain and capability alignment", anchor=False)
+        st.markdown("Compare ACORD concepts with regional domains and API Analyzer capabilities.")
+        st.badge("Awaiting alignment", color="gray", icon=":material/hourglass_empty:")
+    with gap_column.container(border=True, height="stretch"):
+        st.subheader("ACORD gap identification", anchor=False)
+        st.markdown("Report aligned and unaligned regional coverage as counts and percentages.")
+        st.metric("Aligned", "—")
+        st.metric("Unaligned", "—")
+    st.info(
+        "Canonical alignment metrics will become available only after ACORD alignment is "
+        "implemented and a reviewer accepts its mappings.",
+        icon=":material/info:",
+    )

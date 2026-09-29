@@ -108,7 +108,7 @@ def test_phase_one_excludes_generated_view_models() -> None:
     assert scoped.relationships == []
 
 
-def test_phase_one_excludes_dtos_and_base_contract_types() -> None:
+def test_phase_one_keeps_endpoint_dtos_and_domain_models_regardless_of_name() -> None:
     model = DiscoveryModel.model_validate_json(
         (FIXTURES / "discovery-model.valid.json").read_text(encoding="utf-8")
     )
@@ -138,7 +138,68 @@ def test_phase_one_excludes_dtos_and_base_contract_types() -> None:
 
     scoped = scope_to_endpoint_view_models(model)
 
-    assert scoped.entities == []
-    assert scoped.operations[0].request_entity_id is None
-    assert scoped.operations[0].responses[0].entity_id is None
-    assert scoped.relationships == []
+    assert [item.name for item in scoped.entities] == ["BaseResponse", "CustomerDto"]
+    assert scoped.operations[0].request_entity_id == request.id
+    assert scoped.operations[0].responses[0].entity_id == response.id
+    assert [item.kind for item in scoped.relationships] == [
+        RelationshipKind.ACCEPTS,
+        RelationshipKind.RETURNS,
+    ]
+
+
+def test_phase_one_keeps_recursively_referenced_child_models() -> None:
+    model = DiscoveryModel.model_validate_json(
+        (FIXTURES / "discovery-model.valid.json").read_text(encoding="utf-8")
+    )
+    request, response = model.entities
+    request.name = request.original_name = "ClaimDto"
+    response.name = response.original_name = "InsuranceClaim"
+    child = response.model_copy(deep=True)
+    child.id = "entity-claim-address"
+    child.name = child.original_name = "ClaimAddress"
+    child.attributes = []
+    request.attributes[0].type.reference_id = child.id
+    request.attributes[0].type.name = "ClaimAddress"
+    model.entities.append(child)
+    model.lineage.extend(
+        [
+            Lineage(
+                id="lineage-claim-dto",
+                source_id="source-code",
+                subject_id=request.id,
+                path="DTOs/ClaimDto.cs",
+                start_line=1,
+                end_line=10,
+            ),
+            Lineage(
+                id="lineage-insurance-claim",
+                source_id="source-code",
+                subject_id=response.id,
+                path="Models/InsuranceClaim.cs",
+                start_line=1,
+                end_line=10,
+            ),
+            Lineage(
+                id="lineage-claim-address",
+                source_id="source-code",
+                subject_id=child.id,
+                path="Models/ClaimAddress.cs",
+                start_line=1,
+                end_line=10,
+            ),
+        ]
+    )
+
+    scoped = scope_to_endpoint_view_models(model)
+
+    assert [item.name for item in scoped.entities] == [
+        "ClaimAddress",
+        "ClaimDto",
+        "InsuranceClaim",
+    ]
+    assert any(
+        item.kind == RelationshipKind.CONTAINS
+        and item.source_id == request.id
+        and item.target_id == child.id
+        for item in scoped.relationships
+    )

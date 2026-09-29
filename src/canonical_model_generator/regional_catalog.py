@@ -18,22 +18,24 @@ def regional_catalog_rows(
     model_rows: list[dict[str, Any]] = []
     endpoint_rows: list[dict[str, Any]] = []
 
-    for run_id, run in sorted(application_runs.items()):
+    for run_id, run in _selected_application_runs(application_runs, region, application_id):
         profile = run.get("profile", {})
-        if profile.get("region") != region or (application_id and run_id != application_id):
-            continue
         artifact = run.get("discovery_model")
         if not artifact:
             continue
         model = DiscoveryModel.model_validate_json(artifact)
-        entity_usage: dict[str, list[tuple[str, str]]] = {item.id: [] for item in model.entities}
+        entity_usage: dict[str, list[tuple[str, str, str]]] = {
+            item.id: [] for item in model.entities
+        }
         for operation in model.operations:
             if operation.request_entity_id in entity_usage:
-                entity_usage[operation.request_entity_id].append((operation.name, "Request"))
+                entity_usage[operation.request_entity_id].append(
+                    (operation.id, operation.name, "Request")
+                )
             for response in operation.responses:
                 if response.entity_id in entity_usage:
                     entity_usage[response.entity_id].append(
-                        (operation.name, f"Response {response.status_code}")
+                        (operation.id, operation.name, f"Response {response.status_code}")
                     )
 
         semantics = _semantic_endpoints(run.get("phase_2_artifacts", {}))
@@ -59,15 +61,18 @@ def regional_catalog_rows(
 
         for entity in model.entities:
             usage = sorted(set(entity_usage[entity.id]))
+            entity_domain, _ = _entity_domain(
+                run.get("phase_2_artifacts", {}), entity.id, usage, semantics
+            )
             model_rows.append(
                 {
                     "Region": model.region,
                     "API": profile.get("application", model.system),
                     "Model": entity.name,
                     "Fields": len(entity.attributes),
-                    "Endpoint mapping": ", ".join(name for name, _ in usage) or "Not linked",
-                    "Usage": ", ".join(role for _, role in usage) or "Not linked",
-                    "Domain": _entity_domain(run.get("phase_2_artifacts", {}), entity.id),
+                    "Endpoint mapping": ", ".join(name for _, name, _ in usage) or "Not linked",
+                    "Usage": ", ".join(role for _, _, role in usage) or "Not linked",
+                    "Domain": entity_domain,
                 }
             )
 
@@ -84,15 +89,14 @@ def regional_model_tree(
 ) -> list[dict[str, Any]]:
     """Build a Region -> API -> model -> endpoint/field hierarchy for display."""
     branches: list[dict[str, Any]] = []
-    for run_id, run in sorted(application_runs.items()):
+    for run_id, run in _selected_application_runs(application_runs, region, application_id):
         profile = run.get("profile", {})
-        if profile.get("region") != region or (application_id and run_id != application_id):
-            continue
         artifact = run.get("discovery_model")
         if not artifact:
             continue
         discovery = DiscoveryModel.model_validate_json(artifact)
         semantic_entities = _semantic_entities(run.get("phase_2_artifacts", {}))
+        semantic_endpoints = _semantic_endpoints(run.get("phase_2_artifacts", {}))
         entity_usage: dict[str, list[dict[str, str]]] = {
             entity.id: [] for entity in discovery.entities
         }
@@ -100,6 +104,7 @@ def regional_model_tree(
             if operation.request_entity_id in entity_usage:
                 entity_usage[operation.request_entity_id].append(
                     {
+                        "OperationId": operation.id,
                         "Endpoint": operation.name,
                         "Method": operation.method.upper(),
                         "Route": operation.route,
@@ -110,6 +115,7 @@ def regional_model_tree(
                 if response.entity_id in entity_usage:
                     entity_usage[response.entity_id].append(
                         {
+                            "OperationId": operation.id,
                             "Endpoint": operation.name,
                             "Method": operation.method.upper(),
                             "Route": operation.route,
@@ -120,6 +126,13 @@ def regional_model_tree(
         models = []
         for entity in sorted(discovery.entities, key=lambda item: item.name.casefold()):
             semantic = semantic_entities.get(entity.id, {})
+            usage = entity_usage[entity.id]
+            entity_domain, domain_source = _entity_domain(
+                run.get("phase_2_artifacts", {}),
+                entity.id,
+                [(item["OperationId"], item["Endpoint"], item["Usage"]) for item in usage],
+                semantic_endpoints,
+            )
             semantic_attributes = {
                 item["attributeId"]: item
                 for item in semantic.get("attributes", [])
@@ -145,14 +158,18 @@ def regional_model_tree(
                 {
                     "id": entity.id,
                     "name": entity.name,
-                    "domain": semantic.get("domain", {}).get("name", "Awaiting API Analyzer"),
+                    "domain": entity_domain,
+                    "domainSource": domain_source,
                     "businessConcept": semantic.get("businessConcept", "Awaiting API Analyzer"),
                     "summary": semantic.get("summary", "Awaiting API Analyzer"),
                     "description": semantic.get("description", "Awaiting API Analyzer"),
                     "confidence": semantic.get("confidence"),
                     "fields": fields,
                     "mappings": sorted(
-                        entity_usage[entity.id],
+                        [
+                            {key: value for key, value in item.items() if key != "OperationId"}
+                            for item in usage
+                        ],
                         key=lambda item: (
                             item["Route"].casefold(),
                             item["Method"],
@@ -238,6 +255,50 @@ def _display_type(type_ref: Any) -> str:
     return name
 
 
+def _selected_application_runs(
+    application_runs: dict[str, dict[str, Any]],
+    region: str,
+    application_id: str | None,
+) -> list[tuple[str, dict[str, Any]]]:
+    eligible = [
+        (run_id, run)
+        for run_id, run in application_runs.items()
+        if run.get("profile", {}).get("region") == region
+        and (application_id is None or run_id == application_id)
+    ]
+    if application_id is not None:
+        return sorted(eligible)
+
+    selected: dict[tuple[str, str, str], tuple[str, dict[str, Any]]] = {}
+    for run_id, run in eligible:
+        profile = run.get("profile", {})
+        identity = (
+            region,
+            str(profile.get("application", "")).casefold(),
+            str(profile.get("repository", "")).casefold(),
+        )
+        current = selected.get(identity)
+        if current is None or _run_quality(run_id, run) > _run_quality(*current):
+            selected[identity] = (run_id, run)
+    return sorted(selected.values())
+
+
+def _run_quality(run_id: str, run: dict[str, Any]) -> tuple[int, int, int, str]:
+    metadata = _semantic_metadata(run.get("phase_2_artifacts", {}))
+    try:
+        entity_count = len(
+            DiscoveryModel.model_validate_json(run.get("discovery_model", b"{}")).entities
+        )
+    except (TypeError, ValueError):
+        entity_count = 0
+    return (
+        len(metadata.get("entities", [])),
+        len(metadata.get("endpoints", [])),
+        entity_count,
+        run_id,
+    )
+
+
 def _semantic_metadata(artifacts: dict[str, bytes]) -> dict[str, Any]:
     content = artifacts.get("semantic-metadata.json")
     if not content:
@@ -266,6 +327,25 @@ def _semantic_entities(artifacts: dict[str, bytes]) -> dict[str, dict[str, Any]]
     }
 
 
-def _entity_domain(artifacts: dict[str, bytes], entity_id: str) -> str:
+def _entity_domain(
+    artifacts: dict[str, bytes],
+    entity_id: str,
+    usage: list[tuple[str, str, str]],
+    endpoint_semantics: dict[str, dict[str, Any]],
+) -> tuple[str, str]:
     semantic = _semantic_entities(artifacts).get(entity_id, {})
-    return semantic.get("domain", {}).get("name", "Awaiting API Analyzer")
+    semantic_domain = semantic.get("domain", {}).get("name")
+    if semantic_domain:
+        return semantic_domain, "Entity analysis"
+    linked_domains = sorted(
+        {
+            endpoint_semantics.get(operation_id, {}).get("domain", {}).get("name")
+            for operation_id, _, _ in usage
+        }
+        - {None}
+    )
+    if len(linked_domains) == 1:
+        return linked_domains[0], "Analyzed endpoint mapping"
+    if len(linked_domains) > 1:
+        return "Multiple analyzed domains", "Analyzed endpoint mappings"
+    return "Awaiting API Analyzer", "Entity analysis pending"

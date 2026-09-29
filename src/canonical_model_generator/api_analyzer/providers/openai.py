@@ -19,16 +19,24 @@ from canonical_model_generator.api_analyzer.prompts import (
     ENUM_SYSTEM_PROMPT,
     NORMALIZATION_SYSTEM_PROMPT,
 )
+from canonical_model_generator.api_analyzer.token_budget import TokenBudget, TokenBudgetConfig
 
 
 class OpenAISemanticProvider:
     """OpenAI adapter using Pydantic Structured Outputs."""
 
-    def __init__(self, *, api_key: str, model: str = "gpt-4o-mini") -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = "gpt-4o-mini",
+        token_budget: TokenBudgetConfig | None = None,
+    ) -> None:
         from openai import OpenAI
 
         self._client = OpenAI(api_key=api_key.strip(), max_retries=2)
         self._model = model
+        self._budget = TokenBudget(model, token_budget)
 
     @property
     def model_name(self) -> str:
@@ -36,6 +44,9 @@ class OpenAISemanticProvider:
 
     def validate_connection(self) -> None:
         self._client.models.retrieve(self._model)
+
+    def usage_snapshot(self) -> dict[str, Any]:
+        return self._budget.snapshot()
 
     def analyze_endpoint(self, context: dict[str, Any]) -> EndpointSemantic:
         return self._parse(EndpointSemantic, ENDPOINT_SYSTEM_PROMPT, context)
@@ -53,14 +64,34 @@ class OpenAISemanticProvider:
         return self._parse(NormalizedEntity, NORMALIZATION_SYSTEM_PROMPT, context)
 
     def _parse(self, output_type: type[Any], instructions: str, context: dict[str, Any]) -> Any:
-        response = self._client.responses.parse(
-            model=self._model,
-            input=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": json.dumps(context, indent=2, sort_keys=True)},
-            ],
-            text_format=output_type,
+        payload = json.dumps(context, indent=2, sort_keys=True)
+        self._budget.reserve(instructions, payload, operation=output_type.__name__)
+        try:
+            response = self._client.responses.parse(
+                model=self._model,
+                input=_text_only_input(instructions, payload),
+                text_format=output_type,
+                max_output_tokens=self._budget.config.max_output_tokens_per_request,
+            )
+        except Exception:
+            self._budget.record_failure()
+            raise
+        usage = response.usage
+        self._budget.record(
+            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
+            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
+            produced_result=response.output_parsed is not None,
         )
         if response.output_parsed is None:
             raise RuntimeError("OpenAI returned no schema-valid semantic result")
         return response.output_parsed
+
+
+def _text_only_input(instructions: str, payload: str) -> list[dict[str, str]]:
+    """Build the only provider input shape allowed by this application: text messages."""
+    if not isinstance(instructions, str) or not isinstance(payload, str):
+        raise TypeError("API Analyzer provider input must be text")
+    return [
+        {"role": "system", "content": instructions},
+        {"role": "user", "content": payload},
+    ]

@@ -19,6 +19,9 @@ concise summary, a fuller description, business purpose, request and response de
 confidence, missing-context notes, and only the exact code symbols that would improve the analysis
 in a bounded follow-up retrieval. Retrieval links marked candidate are possible symbol matches,
 not resolved execution paths. A YAML-only contract cannot establish implementation behavior.
+The operation.responses array is the authoritative Phase 1 response inventory. Return exactly one
+response description for each supplied statusCode, do not add status codes observed only in source
+snippets, and record any apparent source/inventory disagreement in context_gaps.
 Before declaring a context gap, check all Chroma-retrieved source
 snippets. Report only gaps that materially prevent the endpoint interpretation."""
 

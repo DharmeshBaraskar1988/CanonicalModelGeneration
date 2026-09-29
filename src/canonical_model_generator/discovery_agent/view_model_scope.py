@@ -1,4 +1,4 @@
-"""Restrict Phase 1 entities to endpoint-facing, user-authored contract models."""
+"""Restrict Phase 1 entities to endpoint-reachable, user-authored models."""
 
 from __future__ import annotations
 
@@ -17,16 +17,13 @@ GENERATED_PATH_PARTS = {"bin", "obj"}
 GENERATED_SUFFIXES = (".g.cs", ".generated.cs", ".designer.cs")
 
 
-CONTRACT_SUFFIXES = ("viewmodel", "request", "response")
-
-
 def scope_to_endpoint_contract_models(model: DiscoveryModel) -> DiscoveryModel:
-    """Keep concrete ViewModel/request/response types connected to API endpoints."""
+    """Keep user-authored types used by endpoints or their reachable model graph."""
     result = model.model_copy(deep=True)
     candidates = {
         entity.id: entity
         for entity in result.entities
-        if _is_endpoint_contract_name(entity.name) and _has_user_roslyn_source(result, entity.id)
+        if _has_user_roslyn_source(result, entity.id)
     }
     retained_ids = {
         entity_id
@@ -172,11 +169,6 @@ def scope_to_endpoint_contract_models(model: DiscoveryModel) -> DiscoveryModel:
 def scope_to_endpoint_view_models(model: DiscoveryModel) -> DiscoveryModel:
     """Backward-compatible name for the endpoint contract-model boundary."""
     return scope_to_endpoint_contract_models(model)
-
-
-def _is_endpoint_contract_name(name: str) -> bool:
-    lowered = name.lower()
-    return not lowered.startswith("base") and lowered.endswith(CONTRACT_SUFFIXES)
 
 
 def _has_user_roslyn_source(model: DiscoveryModel, subject_id: str) -> bool:

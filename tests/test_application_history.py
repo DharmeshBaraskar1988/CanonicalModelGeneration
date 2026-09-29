@@ -45,3 +45,25 @@ def test_application_history_ignores_incomplete_record(tmp_path) -> None:
     (incomplete / "record.json").write_text("{}", encoding="utf-8")
 
     assert load_application_records(tmp_path) == {}
+
+
+def test_application_history_does_not_persist_or_load_image_artifacts(tmp_path) -> None:
+    discovery = Path("tests/fixtures/discovery-model.valid.json").read_bytes()
+    application_id = "c" * 32
+    run = {
+        "profile": {"region": "EU", "application": "quote-api", "repository": "quote.zip"},
+        "discovery_artifacts": {},
+        "discovery_model": discovery,
+        "phase_2_artifacts": {
+            "semantic-metadata.json": b"{}",
+            "entity-relationship-diagram.svg": b"<svg/>",
+            "entity-relationship-diagram.mmd": b"erDiagram\n",
+        },
+    }
+
+    save_application_record(tmp_path, application_id, run)
+    loaded = load_application_records(tmp_path)
+
+    assert loaded[application_id]["phase_2_artifacts"] == {"semantic-metadata.json": b"{}"}
+    assert not (tmp_path / application_id / "phase-2/entity-relationship-diagram.svg").exists()
+    assert not (tmp_path / application_id / "phase-2/entity-relationship-diagram.mmd").exists()

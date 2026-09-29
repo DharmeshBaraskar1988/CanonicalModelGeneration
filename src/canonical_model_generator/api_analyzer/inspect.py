@@ -8,6 +8,7 @@ from canonical_model_generator.api_analyzer.contracts import CodeSemantic, Seman
 from canonical_model_generator.api_analyzer.workflow import (
     INSURANCE_TAXONOMY,
     _classification_hints,
+    _reconcile_endpoint_responses,
     _repository_signals,
     _validate_domain,
     _validate_endpoint_result,
@@ -101,6 +102,7 @@ def inspect_retrieved_target(
                 "classificationHints": _classification_hints(model, operation),
             }
             semantic = provider.analyze_endpoint(context)
+            semantic = _reconcile_endpoint_responses(context, semantic)
             _validate_endpoint_result(context, semantic)
             meaning = semantic.model_dump(mode="json", by_alias=True)
             confidence = min(
