@@ -54,11 +54,120 @@ def test_reconciliation_preserves_in_scope_request_conflicts() -> None:
     assert any("CreateQuoteRequest.applicantName" in item.message for item in result.diagnostics)
 
 
-def test_openapi_guides_code_search_and_reconciles_relative_routes_and_renamed_models() -> None:
+CLAIMS_SPEC = r"""openapi: 3.0.1
+info:
+  title: COR01SH01-Claim_API_v3
+  version: 3.0.0
+paths:
+  /ping:
+    get:
+      summary: Ping
+      operationId: get-ping
+      responses:
+        '200':
+          description: OK
+  /service/claims:
+    post:
+      summary: Service.CreateClaim
+      operationId: post-service-claims
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/COR01SH01_Claim_v3_RequestModel'
+      responses:
+        '200':
+          $ref: '#/components/responses/COR01SH01_CreateClaimResponse'
+  /service/claims/search:
+    post:
+      summary: Service.SearchClaim
+      operationId: post-service-claims-search
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                claim:
+                  $ref: '#/components/schemas/SearchModel_v3'
+      responses:
+        '200':
+          description: OK
+components:
+  responses:
+    COR01SH01_CreateClaimResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/COR01SH01_Claim_v3_ResponseModel'
+  schemas:
+    COR01SH01_Claim_v3_RequestModel:
+      type: object
+      properties:
+        claim:
+          $ref: '#/components/schemas/LossEventModel_v3'
+        allocate:
+          $ref: '#/components/schemas/GeneralPartyModel_v3'
+        broker:
+          $ref: '#/components/schemas/GeneralPartyModel_v3'
+        claimant:
+          $ref: '#/components/schemas/GeneralPartyModel_v3'
+        supervisor:
+          $ref: '#/components/schemas/GeneralPartyModel_v3'
+        expert:
+          $ref: '#/components/schemas/GeneralPartyModel_v3'
+        insured:
+          $ref: '#/components/schemas/GeneralPartyModel_v3'
+        documents:
+          type: array
+          items:
+            $ref: .\\COR01SH01_v3_DocumentModel.yaml
+    COR01SH01_Claim_v3_ResponseModel:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse_v1'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/COR01SH01_Claim_v3_RequestModel'
+    BaseResponse_v1:
+      type: object
+      properties:
+        trackingId:
+          type: string
+    SearchModel_v3:
+      type: object
+      properties:
+        policyNumber:
+          type: string
+    LossEventModel_v3:
+      type: object
+      properties:
+        idInfo:
+          $ref: .\\ItemIdInfoModel_v3.yaml
+        policyInfo:
+          $ref: .\\ItemIdInfoModel_v3.yaml
+    GeneralPartyModel_v3:
+      type: object
+      properties:
+        idInfo:
+          $ref: .\\ItemIdInfoModel_v3.yaml
+    ItemIdInfoModel_v3:
+      type: object
+      properties:
+        systemId:
+          type: string
+"""
+
+
+def test_openapi_guides_code_search_and_reconciles_relative_routes_and_renamed_models(
+    tmp_path: Path,
+) -> None:
     from canonical_model_generator.discovery_agent.openapi import spec_schema_names
 
     repository = Path("fixtures/AzureFunctionsMediatorClaimsApi").resolve()
-    spec = repository / "openapi/claims-api-fixture.yaml"
+    spec = tmp_path / "claims-api.yaml"
+    spec.write_text(CLAIMS_SPEC, encoding="utf-8")
     project = repository / "AzureFunctionsMediatorClaimsApi.csproj"
     args = (repository, "EU", "azure-functions-mediator-claims-api")
 
