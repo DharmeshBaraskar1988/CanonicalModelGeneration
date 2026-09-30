@@ -306,7 +306,8 @@ def _build_model(
                         evidence_ids=[operation_evidence],
                     )
                 )
-            for response in responses:
+            # Several statuses (e.g. every 4xx/5xx) commonly return one shared error model.
+            for response in {item.entity_id: item for item in responses}.values():
                 if response.entity_id:
                     relationships.append(
                         Relationship(
