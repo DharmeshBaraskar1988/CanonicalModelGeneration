@@ -14,3 +14,4 @@ __pycache__/
 .alignments/
 .canonical/
 .llm-logs/
+*.yaml
