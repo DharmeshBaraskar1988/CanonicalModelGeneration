@@ -922,7 +922,13 @@ public static class RoslynExtractor
                 .Replace("Attribute", string.Empty, StringComparison.Ordinal);
             if (attrName == "Function")
             {
-                return SyntaxFirstString(attribute);
+                // Try string literal or nameof() first.
+                var name = SyntaxFirstString(attribute);
+                if (name is not null) return name;
+                // Fall back for constant references like OperationConstants.OperationName.
+                var firstArg = attribute.ArgumentList?.Arguments.FirstOrDefault();
+                var fallback = firstArg?.Expression.ToString().Split('.').Last();
+                return string.IsNullOrEmpty(fallback) ? "UnknownFunction" : fallback;
             }
         }
         return null;

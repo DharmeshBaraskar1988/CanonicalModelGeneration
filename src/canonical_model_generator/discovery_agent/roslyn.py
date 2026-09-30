@@ -47,7 +47,6 @@ def extract_roslyn(project: Path, repository: Path, region: str, system: str) ->
                 "run",
                 "--project",
                 str(sidecar),
-                "--no-build",
                 "--",
                 "--project",
                 str(project.resolve()),

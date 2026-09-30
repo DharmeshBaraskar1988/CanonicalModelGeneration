@@ -120,7 +120,6 @@ def roslyn_hierarchy(files: list[dict[str, str]]) -> list[dict[str, Any]]:
                 "run",
                 "--project",
                 str(sidecar),
-                "--no-build",
                 "--",
                 "--chunk-input",
                 str(request),
