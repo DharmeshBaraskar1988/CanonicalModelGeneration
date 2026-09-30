@@ -58,7 +58,7 @@ def test_openapi_guides_code_search_and_reconciles_relative_routes_and_renamed_m
     from canonical_model_generator.discovery_agent.openapi import spec_schema_names
 
     repository = Path("fixtures/AzureFunctionsMediatorClaimsApi").resolve()
-    spec = repository / "openapi/claims-v3.yaml"
+    spec = repository / "openapi/claims-api-fixture.yaml"
     project = repository / "AzureFunctionsMediatorClaimsApi.csproj"
     args = (repository, "EU", "azure-functions-mediator-claims-api")
 
