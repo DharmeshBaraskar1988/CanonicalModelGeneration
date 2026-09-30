@@ -312,7 +312,7 @@ def test_phase_two_selects_the_matching_region_repository_and_discovery_artifact
         app.text_input(key="phase_2_key_override")
     with pytest.raises(KeyError):
         app.text_input(key="regional_review_key")
-    assert app.file_uploader(key="acord_document").label == "ACORD OpenAPI document"
+    assert app.file_uploader(key="acord_document").label == "ACORD OpenAPI documents"
     assert app.checkbox(key="acord_usage_authorized").label.startswith("I confirm")
     assert any(button.label == "Build ACORD RAG index" for button in app.button)
     acord_menu.set_value(":material/compare_arrows: ACORD alignment").run()

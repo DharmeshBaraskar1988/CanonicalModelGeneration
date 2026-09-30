@@ -67,6 +67,23 @@ def test_openapi_summary_supports_json() -> None:
     assert summary["schema_count"] == 1
 
 
+def test_inventory_finds_azure_functions_project() -> None:
+    archive = make_zip(
+        {
+            "src/MyFunctions/MyFunctions.csproj": "<Project />",
+            "src/MyFunctions/host.json": '{"version": "2.0"}',
+            "src/MyFunctions/local.settings.json": '{"IsEncrypted": false}',
+            "src/MyFunctions/QuoteFunction.cs": "[Function(nameof(CreateQuote))] class QuoteFunction {}",
+        }
+    )
+
+    inventory = inspect_repository_zip(archive)
+
+    assert inventory.ready_for_discovery
+    assert inventory.controllers == ()
+    assert inventory.azure_function_projects == ("src/MyFunctions/MyFunctions.csproj",)
+
+
 def test_manifest_is_stable_and_records_next_stage() -> None:
     inventory = inspect_repository_zip(
         make_zip(

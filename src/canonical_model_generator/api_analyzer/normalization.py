@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol
 
-from canonical_model_generator.api_analyzer.contracts import NormalizedEntity
+from canonical_model_generator.api_analyzer.contracts import NormalizedEntity, NormalizedOperation
 from canonical_model_generator.discovery_agent.model import DiscoveryModel
 
 
 class EntityNormalizationProvider(Protocol):
     def normalize_entity(self, context: dict[str, Any]) -> NormalizedEntity: ...
+
+
+class OperationNormalizationProvider(Protocol):
+    def normalize_operation(self, context: dict[str, Any]) -> NormalizedOperation: ...
 
 
 def normalize_regional_entity(
@@ -54,6 +58,55 @@ def normalize_regional_entity(
         }
     )
     return preserved.model_dump(mode="json", by_alias=True)
+
+
+def normalize_regional_endpoint(
+    discovery_artifact: bytes,
+    operation_id: str,
+    semantic_metadata: bytes | None,
+    provider: OperationNormalizationProvider,
+    regional_inventory: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Propose a normalized name for one endpoint without mutating the Discovery artifact."""
+    discovery = DiscoveryModel.model_validate_json(discovery_artifact)
+    operation = next((op for op in discovery.operations if op.id == operation_id), None)
+    if operation is None:
+        raise ValueError(f"Unknown operation ID: {operation_id}")
+    semantics = _operation_semantics(semantic_metadata, operation_id)
+    context = {
+        "region": discovery.region,
+        "application": discovery.system,
+        "operation": {
+            "id": operation.id,
+            "name": operation.name,
+            "method": operation.method,
+            "route": operation.route,
+        },
+        "apiAnalyzerSemantics": semantics,
+        "regionalInventory": regional_inventory,
+    }
+    result = provider.normalize_operation(context)
+    if result.operation_id != operation.id:
+        raise ValueError("Normalization must preserve the operation ID")
+    preserved = result.model_copy(update={"original_name": operation.name})
+    return preserved.model_dump(mode="json", by_alias=True)
+
+
+def _operation_semantics(content: bytes | None, operation_id: str) -> dict[str, Any] | None:
+    if not content:
+        return None
+    try:
+        metadata = json.loads(content)
+    except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+        return None
+    return next(
+        (
+            item
+            for item in metadata.get("endpoints", [])
+            if isinstance(item, dict) and item.get("operationId") == operation_id
+        ),
+        None,
+    )
 
 
 def _entity_semantics(content: bytes | None, entity_id: str) -> dict[str, Any] | None:

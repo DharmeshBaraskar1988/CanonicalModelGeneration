@@ -17,7 +17,7 @@ def test_graph_runs_complete_fixture_and_generates_valid_artifacts(tmp_path: Pat
     )
 
     assert not state["errors"]
-    assert [item["status"] for item in state["events"]] == ["ok"] * 6
+    assert [item["status"] for item in state["events"]] == ["ok"] * 7
     assert set(path.name for path in output.iterdir()) == {
         "discovery-model.json",
         "api-catalog.json",

@@ -64,3 +64,12 @@ add, remove, merge, split, or change the type of any entity or attribute. Use th
 Analyzer semantics when available. When a regional inventory is supplied, use it only to choose
 consistent normalized terminology for equivalent concepts across APIs; do not claim that two
 items are duplicates. Mark uncertain proposals with lower confidence."""
+
+ENDPOINT_NORMALIZATION_SYSTEM_PROMPT = """Normalize the operation name of one API endpoint.
+This is a review proposal only; do not change route, method, or operation ID. Preserve the
+supplied operation ID verbatim. Copy the original name verbatim including its exact casing.
+Suggest a clear, stable, business-readable PascalCase name that uses a consistent verb + noun
+pattern (for example GetQuoteDetails, CreatePolicy, SubmitClaim). Use the supplied domain and
+capability to align the name with the business context. When a regional inventory is supplied,
+use it only to choose consistent terminology for equivalent operations across APIs; do not claim
+that two endpoints are duplicates. Mark uncertain proposals with lower confidence."""

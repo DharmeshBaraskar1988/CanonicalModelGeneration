@@ -9,6 +9,7 @@ from canonical_model_generator.api_analyzer.contracts import (
     EnumSemantic,
     NormalizedAttribute,
     NormalizedEntity,
+    NormalizedOperation,
     ResponseSemantic,
     SemanticProvider,
 )
@@ -16,7 +17,10 @@ from canonical_model_generator.api_analyzer.inspect import (
     inspect_retrieved_code,
     inspect_retrieved_target,
 )
-from canonical_model_generator.api_analyzer.normalization import normalize_regional_entity
+from canonical_model_generator.api_analyzer.normalization import (
+    normalize_regional_endpoint,
+    normalize_regional_entity,
+)
 from canonical_model_generator.api_analyzer.providers.openai import OpenAISemanticProvider
 from canonical_model_generator.api_analyzer.token_budget import (
     TokenBudgetConfig,
@@ -36,6 +40,7 @@ __all__ = [
     "EnumSemantic",
     "NormalizedAttribute",
     "NormalizedEntity",
+    "NormalizedOperation",
     "OpenAISemanticProvider",
     "ResponseSemantic",
     "SemanticProvider",
@@ -45,5 +50,6 @@ __all__ = [
     "inspect_retrieved_target",
     "inspect_retrieved_code",
     "run_api_analyzer_agent",
+    "normalize_regional_endpoint",
     "normalize_regional_entity",
 ]

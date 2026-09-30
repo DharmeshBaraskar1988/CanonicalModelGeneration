@@ -66,6 +66,9 @@ from canonical_model_generator.api_analyzer import (  # noqa: E402
     normalize_regional_entity,
     run_api_analyzer_agent,
 )
+from canonical_model_generator.api_analyzer.normalization import (  # noqa: E402
+    normalize_regional_endpoint,
+)
 from canonical_model_generator.application_history import (  # noqa: E402
     RUN_ID_PATTERN,
     load_application_records,
@@ -275,12 +278,41 @@ ACORD_HISTORY_ROOT = Path(__file__).resolve().parent / ".acord"
 REGIONAL_REVIEWS_ROOT = Path(__file__).resolve().parent / ".regional-reviews"
 
 
-def _save_regional_review(root: Path, region: str, review: dict[str, Any]) -> None:
-    """Persist an approved regional review JSON so it survives page reloads."""
+def _safe_region_slug(region: str) -> str:
     import re as _re
 
+    return _re.sub(r"[^a-z0-9_-]", "-", region.casefold()).strip("-") or "region"
+
+
+def _save_norm_draft(root: Path, region: str, data: dict[str, Any]) -> None:
+    """Persist normalization proposals and decisions so they survive page reloads."""
     root.mkdir(parents=True, exist_ok=True)
-    safe = _re.sub(r"[^a-z0-9_-]", "-", region.casefold()).strip("-") or "region"
+    slug = _safe_region_slug(region)
+    tmp = root / f"{slug}-norm.json.tmp"
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(root / f"{slug}-norm.json")
+
+
+def _load_all_norm_drafts(root: Path) -> dict[str, dict[str, Any]]:
+    """Load all saved normalization drafts keyed by region."""
+    drafts: dict[str, dict[str, Any]] = {}
+    if not root.is_dir():
+        return drafts
+    for path in sorted(root.glob("*-norm.json")):
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+            region = d.get("region")
+            if region:
+                drafts[region] = d
+        except Exception:
+            continue
+    return drafts
+
+
+def _save_regional_review(root: Path, region: str, review: dict[str, Any]) -> None:
+    """Persist an approved regional review JSON so it survives page reloads."""
+    root.mkdir(parents=True, exist_ok=True)
+    safe = _safe_region_slug(region)
     tmp = root / f"{safe}.json.tmp"
     tmp.write_text(json.dumps(review, indent=2, sort_keys=True), encoding="utf-8")
     tmp.replace(root / f"{safe}.json")
@@ -347,6 +379,8 @@ st.session_state.setdefault("rag_semantics", None)
 st.session_state.setdefault("application_runs", {})
 st.session_state.setdefault("active_application_id", None)
 st.session_state.setdefault("regional_normalizations", {})
+st.session_state.setdefault("regional_endpoint_normalizations", {})
+st.session_state.setdefault("regional_decisions", {})
 st.session_state.setdefault("approved_regional_reviews", {})
 st.session_state.setdefault("acord_runs", {})
 st.session_state.setdefault("active_acord_id", None)
@@ -373,6 +407,14 @@ if (
     st.session_state["active_alignment_id"] = next(reversed(st.session_state["alignment_reviews"]))
 if not st.session_state["approved_regional_reviews"]:
     st.session_state["approved_regional_reviews"] = _load_regional_reviews(REGIONAL_REVIEWS_ROOT)
+if not st.session_state.get("_norm_drafts_loaded"):
+    for _region, _draft in _load_all_norm_drafts(REGIONAL_REVIEWS_ROOT).items():
+        for _k, _v in _draft.get("normalizations", {}).items():
+            st.session_state["regional_normalizations"].setdefault(_k, _v)
+        for _k, _v in _draft.get("endpointNormalizations", {}).items():
+            st.session_state["regional_endpoint_normalizations"].setdefault(_k, _v)
+        st.session_state["regional_decisions"].setdefault(_region, _draft.get("decisions", {}))
+    st.session_state["_norm_drafts_loaded"] = True
 
 
 def build_artifact_bundle(artifacts: dict[str, bytes]) -> bytes:
@@ -718,6 +760,27 @@ def confirm_delete_acord(run_id: str) -> None:
             st.error(f"ACORD ingestion deletion failed: {exc}")
 
 
+def _extract_yaml_json_from_zip(content: bytes, zip_name: str) -> list[tuple[str, bytes]]:
+    """Return (filename, content) pairs for every YAML/JSON file found inside a ZIP archive."""
+    results: list[tuple[str, bytes]] = []
+    try:
+        with ZipFile(BytesIO(content)) as zf:
+            for entry in zf.infolist():
+                if entry.is_dir():
+                    continue
+                raw_name = entry.filename
+                suffix = raw_name.lower().rsplit(".", 1)[-1] if "." in raw_name else ""
+                if suffix not in {"json", "yaml", "yml"}:
+                    continue
+                safe_name = Path(raw_name).name
+                if not safe_name:
+                    continue
+                results.append((safe_name, zf.read(entry)))
+    except Exception as exc:
+        raise ValueError(f"Could not open ZIP archive '{zip_name}': {exc}") from exc
+    return results
+
+
 def ingest_acord_reference(
     *,
     source_content: bytes,
@@ -969,7 +1032,11 @@ def has_unfinished_semantic_targets(artifacts: dict[str, bytes]) -> bool:
     )
 
 
-def select_web_projects(projects: tuple[str, ...], controllers: tuple[str, ...]) -> list[str]:
+def select_web_projects(
+    projects: tuple[str, ...],
+    controllers: tuple[str, ...],
+    azure_function_projects: tuple[str, ...] = (),
+) -> list[str]:
     ownership = {project: 0 for project in projects}
     project_parents = {project: PurePosixPath(project).parent for project in projects}
     for controller in controllers:
@@ -983,11 +1050,13 @@ def select_web_projects(projects: tuple[str, ...], controllers: tuple[str, ...])
             owner = max(candidates, key=lambda item: len(project_parents[item].parts))
             ownership[owner] += 1
 
+    azure_fn_set = set(azure_function_projects)
     selected = [
         project
         for project, count in ownership.items()
         if (
             count > 0
+            or project in azure_fn_set
             or "api" in PurePosixPath(project).stem.lower()
             or PurePosixPath(project).stem.lower() == "web"
         )
@@ -1009,8 +1078,10 @@ def run_uploaded_discovery(
     inventory = inspect_repository_zip(archive)
     if not inventory.projects:
         raise IntakeError("The repository ZIP must contain a .csproj file.")
-    if not inventory.controllers:
-        raise IntakeError("The repository ZIP must contain at least one controller.")
+    if not inventory.controllers and not inventory.azure_function_projects:
+        raise IntakeError(
+            "The repository ZIP must contain at least one controller or Azure Functions project."
+        )
     with TemporaryDirectory(prefix="canonical-discovery-") as temporary:
         workspace = Path(temporary)
         repository = workspace / "repository"
@@ -1019,9 +1090,11 @@ def run_uploaded_discovery(
         with ZipFile(BytesIO(archive)) as zip_file:
             zip_file.extractall(repository)
 
-        selected_projects = select_web_projects(inventory.projects, inventory.controllers)
+        selected_projects = select_web_projects(
+            inventory.projects, inventory.controllers, inventory.azure_function_projects
+        )
         if not selected_projects:
-            raise IntakeError("No non-test project owns the discovered controller files.")
+            raise IntakeError("No non-test project owns the discovered controller or function files.")
         roslyn_models = [
             extract_roslyn(repository / project, repository, region.strip(), system.strip())
             for project in selected_projects
@@ -2160,81 +2233,32 @@ with regional_tab:
                 st.metric("Source entities", entity_count)
                 st.metric("Source attributes", field_count)
 
-            with st.expander("Region-wide normalization settings", expanded=not entity_count):
-                regional_model = resolve_openai_model()
-                st.caption(f"Normalization model from .env: {regional_model}")
-                regional_consent = st.checkbox(
-                    "Allow every entity, its attributes, and existing API Analyzer descriptions "
-                    "in this region to be sent to OpenAI.",
-                    key="regional_review_consent",
-                )
-                regional_api_key = openai_api_key()
-                if st.button(
-                    "Normalize entire region",
-                    icon=":material/auto_fix_high:",
-                    type="primary",
-                    key="normalize_entire_region",
-                    disabled=(not entity_count or not regional_consent or not regional_api_key),
-                ):
-                    provider = OpenAISemanticProvider(
-                        api_key=regional_api_key or "",
-                        model=regional_model,
-                    )
-                    progress = st.progress(0, text="Checking provider access")
-                    try:
-                        provider.validate_connection()
-                        regional_inventory = [
-                            {
-                                "api": branch["api"],
-                                "entity": model_branch["name"],
-                                "attributes": [
-                                    {"name": field["Field"], "type": field["Type"]}
-                                    for field in model_branch["fields"]
-                                ],
-                            }
-                            for branch in entire_region_tree
-                            for model_branch in branch["models"]
-                        ]
-                        processed = 0
-                        for branch in entire_region_tree:
-                            selected_run = runs[branch["runId"]]
-                            for model_branch in branch["models"]:
-                                normalization_id = f"{branch['runId']}:{model_branch['id']}"
-                                progress.progress(
-                                    processed / entity_count,
-                                    text=(f"Normalizing {branch['api']} · {model_branch['name']}"),
-                                )
-                                st.session_state["regional_normalizations"][normalization_id] = (
-                                    normalize_regional_entity(
-                                        selected_run["discovery_model"],
-                                        model_branch["id"],
-                                        selected_run.get("phase_2_artifacts", {}).get(
-                                            "semantic-metadata.json"
-                                        ),
-                                        provider,
-                                        regional_inventory,
-                                    )
-                                )
-                                processed += 1
-                        progress.progress(1.0, text="Regional normalization complete")
-                        st.rerun()
-                    except Exception as exc:
-                        progress.empty()
-                        st.error(
-                            "Regional normalization stopped. Existing completed proposals were "
-                            f"kept. Check provider access or output validity. Error: "
-                            f"{type(exc).__name__}."
-                        )
-
             if not entity_count:
                 st.info("No endpoint contract entities were discovered in this region.")
             else:
                 proposals = st.session_state["regional_normalizations"]
+                ep_proposals = st.session_state["regional_endpoint_normalizations"]
 
-                # Build flat row lists for compact comparative tables
-                entity_rows_meta: list[str] = []  # review_id per row
+                # helper: Select-All version tracking forces data_editor re-render
+                def _sa_ver(section: str) -> int:
+                    key = f"_sa_{section}_{selected_region}"
+                    prev_key = f"_sa_{section}_prev_{selected_region}"
+                    current = st.session_state.get(f"sa_{section}_{selected_region}", False)
+                    if st.session_state.get(prev_key) != current:
+                        st.session_state[prev_key] = current
+                        st.session_state[key] = st.session_state.get(key, 0) + 1
+                    return st.session_state.get(key, 0)
+
+                # Saved decisions for pre-filling Approved/Comment on fresh load
+                _saved_dec = st.session_state["regional_decisions"].get(selected_region, {})
+                _saved_ent_dec = _saved_dec.get("entities", {})
+                _saved_attr_dec = _saved_dec.get("attributes", {})
+                _saved_ep_dec = _saved_dec.get("endpoints", {})
+
+                # Build entity and attribute rows
+                entity_rows_meta: list[str] = []
                 entity_rows_display: list[dict] = []
-                attr_rows_meta: list[tuple[str, str]] = []  # (review_id, field_id) per row
+                attr_rows_meta: list[tuple[str, str]] = []
                 attr_rows_display: list[dict] = []
                 for branch in entire_region_tree:
                     for model_branch in branch["models"]:
@@ -2243,41 +2267,56 @@ with regional_tab:
                         suggested_attrs = {
                             item["attributeId"]: item for item in proposal.get("attributes", [])
                         }
+                        _edec = _saved_ent_dec.get(review_id, {})
                         entity_rows_meta.append(review_id)
                         entity_rows_display.append(
                             {
+                                "Select": False,
                                 "API": branch["api"],
                                 "Entity (original)": model_branch["name"],
                                 "Domain": model_branch.get("domain", "Awaiting API Analyzer"),
                                 "AI suggestion": proposal.get("normalizedName") or "—",
-                                "Approved": "Original",
-                                "Comment": "",
+                                "Approved": _edec.get("selection", "Original"),
+                                "Comment": _edec.get("comment", ""),
                             }
                         )
                         for field in model_branch["fields"]:
                             suggested = suggested_attrs.get(field["id"], {})
+                            _adec = _saved_attr_dec.get(f"{review_id}:{field['id']}", {})
                             attr_rows_meta.append((review_id, field["id"]))
                             attr_rows_display.append(
                                 {
+                                    "Select": False,
                                     "API": branch["api"],
                                     "Entity": model_branch["name"],
                                     "Attribute (original)": field["Field"],
                                     "AI suggestion": suggested.get("normalizedName") or "—",
                                     "Type": field["Type"],
-                                    "Approved": "Original",
-                                    "Comment": "",
+                                    "Approved": _adec.get("selection", "Original"),
+                                    "Comment": _adec.get("comment", ""),
                                 }
                             )
 
+                # Entity table
                 st.markdown("##### Entities")
+                sa_ent = st.checkbox(
+                    "Select all entities",
+                    key=f"sa_entities_{selected_region}",
+                )
+                ent_ver = _sa_ver("entities")
                 edited_entities = st.data_editor(
-                    entity_rows_display,
+                    [{**r, "Select": sa_ent} for r in entity_rows_display],
                     hide_index=True,
-                    width="stretch",
+                    use_container_width=True,
                     num_rows="fixed",
-                    key=f"entity_review_{selected_region}",
+                    key=f"entity_review_{selected_region}_v{ent_ver}",
                     disabled=["API", "Entity (original)", "Domain", "AI suggestion"],
                     column_config={
+                        "Select": st.column_config.CheckboxColumn(
+                            "Select",
+                            help="Check to include in LLM normalization",
+                            default=False,
+                        ),
                         "Approved": st.column_config.SelectboxColumn(
                             "Approved",
                             options=["Original", "AI suggestion"],
@@ -2286,15 +2325,37 @@ with regional_tab:
                         "Comment": st.column_config.TextColumn("Comment"),
                     },
                 )
+                _n_ent_sel = sum(1 for r in edited_entities if r.get("Select"))
+                st.caption(
+                    f"{'✓ ' + str(_n_ent_sel) + ' of ' + str(len(entity_rows_display)) + ' entities selected' if _n_ent_sel else '0 of ' + str(len(entity_rows_display)) + ' entities selected'}"
+                )
+
+                # Attribute table
                 st.markdown("##### Attributes")
+                sa_attr = st.checkbox(
+                    "Select all attributes",
+                    key=f"sa_attributes_{selected_region}",
+                )
+                attr_ver = _sa_ver("attributes")
                 edited_attrs = st.data_editor(
-                    attr_rows_display,
+                    [{**r, "Select": sa_attr} for r in attr_rows_display],
                     hide_index=True,
-                    width="stretch",
+                    use_container_width=True,
                     num_rows="fixed",
-                    key=f"attribute_review_{selected_region}",
-                    disabled=["API", "Entity", "Attribute (original)", "AI suggestion", "Type"],
+                    key=f"attribute_review_{selected_region}_v{attr_ver}",
+                    disabled=[
+                        "API",
+                        "Entity",
+                        "Attribute (original)",
+                        "AI suggestion",
+                        "Type",
+                    ],
                     column_config={
+                        "Select": st.column_config.CheckboxColumn(
+                            "Select",
+                            help="Check to include in LLM normalization",
+                            default=False,
+                        ),
                         "Approved": st.column_config.SelectboxColumn(
                             "Approved",
                             options=["Original", "AI suggestion"],
@@ -2303,6 +2364,299 @@ with regional_tab:
                         "Comment": st.column_config.TextColumn("Comment"),
                     },
                 )
+                _n_attr_sel = sum(1 for r in edited_attrs if r.get("Select"))
+                if _n_attr_sel:
+                    _attr_parent_ids = {
+                        attr_rows_meta[i][0]
+                        for i in range(len(edited_attrs))
+                        if edited_attrs[i].get("Select")
+                    }
+                    _np = len(_attr_parent_ids)
+                    st.caption(
+                        f"✓ {_n_attr_sel} of {len(attr_rows_display)} attributes selected"
+                        f" → {_np} parent {'entity' if _np == 1 else 'entities'} queued for normalization"
+                    )
+                else:
+                    st.caption(f"0 of {len(attr_rows_display)} attributes selected")
+
+                # Endpoint table
+                st.markdown("##### Endpoints")
+                st.caption("Domain and Capability come from completed API Analyzer output.")
+                endpoint_rows_meta: list[tuple[str, str]] = []
+                endpoint_rows_display: list[dict] = []
+                for branch in entire_region_tree:
+                    ep_run = runs[branch["runId"]]
+                    ep_discovery = DiscoveryModel.model_validate_json(ep_run["discovery_model"])
+                    ep_meta_bytes = ep_run.get("phase_2_artifacts", {}).get(
+                        "semantic-metadata.json"
+                    )
+                    try:
+                        ep_meta = json.loads(ep_meta_bytes) if ep_meta_bytes else {}
+                    except Exception:
+                        ep_meta = {}
+                    ep_semantics = {
+                        item["operationId"]: item
+                        for item in ep_meta.get("endpoints", [])
+                        if isinstance(item, dict) and item.get("operationId")
+                    }
+                    for op in ep_discovery.operations:
+                        norm_id = f"{branch['runId']}:{op.id}"
+                        ep_proposal = ep_proposals.get(norm_id, {})
+                        sem = ep_semantics.get(op.id, {})
+                        domain_name = sem.get("domain", {}).get("name", "Awaiting API Analyzer")
+                        cap_name = sem.get("capability", {}).get("name", "Awaiting API Analyzer")
+                        _epdec = _saved_ep_dec.get(f"{branch['runId']}:{op.id}", {})
+                        endpoint_rows_meta.append((branch["runId"], op.id))
+                        endpoint_rows_display.append(
+                            {
+                                "Select": False,
+                                "API": branch["api"],
+                                "Endpoint (original)": op.name,
+                                "Method": op.method.upper(),
+                                "Route": op.route,
+                                "Domain": domain_name,
+                                "Capability": cap_name,
+                                "AI suggestion": ep_proposal.get("normalizedName") or "—",
+                                "Approved": _epdec.get("selection", "Original"),
+                                "Comment": _epdec.get("comment", ""),
+                            }
+                        )
+                if endpoint_rows_display:
+                    sa_ep = st.checkbox(
+                        "Select all endpoints",
+                        key=f"sa_endpoints_{selected_region}",
+                    )
+                    ep_ver = _sa_ver("endpoints")
+                    edited_endpoints = st.data_editor(
+                        [{**r, "Select": sa_ep} for r in endpoint_rows_display],
+                        hide_index=True,
+                        use_container_width=True,
+                        num_rows="fixed",
+                        key=f"endpoint_review_{selected_region}_v{ep_ver}",
+                        disabled=[
+                            "API",
+                            "Endpoint (original)",
+                            "Method",
+                            "Route",
+                            "Domain",
+                            "Capability",
+                            "AI suggestion",
+                        ],
+                        column_config={
+                            "Select": st.column_config.CheckboxColumn(
+                                "Select",
+                                help="Check to include in LLM normalization",
+                                default=False,
+                            ),
+                            "Approved": st.column_config.SelectboxColumn(
+                                "Approved",
+                                options=["Original", "AI suggestion"],
+                                required=True,
+                            ),
+                            "Comment": st.column_config.TextColumn("Comment"),
+                        },
+                    )
+                    _n_ep_sel = sum(1 for r in edited_endpoints if r.get("Select"))
+                    st.caption(
+                        f"{'✓ ' + str(_n_ep_sel) if _n_ep_sel else '0'}"
+                        f" of {len(endpoint_rows_display)} endpoints selected"
+                    )
+                else:
+                    edited_endpoints = []
+                    st.info("No endpoints were discovered in this region.")
+
+                # Single unified normalize button (entities + endpoints)
+                # Directly selected entities
+                sel_entity_ids: dict[str, dict] = {
+                    entity_rows_meta[i]: edited_entities[i]
+                    for i in range(len(edited_entities))
+                    if edited_entities[i].get("Select")
+                }
+                # Add parent entities of any selected attribute rows
+                for i in range(len(edited_attrs)):
+                    if edited_attrs[i].get("Select"):
+                        parent_id = attr_rows_meta[i][0]  # review_id = runId:entityId
+                        if parent_id not in sel_entity_ids:
+                            parent_idx = entity_rows_meta.index(parent_id)
+                            sel_entity_ids[parent_id] = edited_entities[parent_idx]
+                sel_entities = list(sel_entity_ids.items())
+                sel_endpoints = [
+                    (endpoint_rows_meta[i], edited_endpoints[i])
+                    for i in range(len(edited_endpoints))
+                    if edited_endpoints[i].get("Select")
+                ]
+                n_attr_sel = sum(1 for r in edited_attrs if r.get("Select"))
+                n_direct_ent = sum(1 for r in edited_entities if r.get("Select"))
+                n_via_attr = len(sel_entities) - n_direct_ent
+                total_sel = len(sel_entities) + len(sel_endpoints)
+
+                _btn_ent_label = f"{n_direct_ent} entit{'y' if n_direct_ent == 1 else 'ies'}"
+                if n_via_attr:
+                    _btn_ent_label += f" + {n_via_attr} via {n_attr_sel} attr{'s' if n_attr_sel != 1 else ''}"
+                _btn_ep_label = f"{len(sel_endpoints)} endpoint{'s' if len(sel_endpoints) != 1 else ''}"
+
+                norm_model = resolve_openai_model()
+                st.caption(f"Normalization model from .env: {norm_model}")
+                norm_consent = st.checkbox(
+                    "Allow selected items and their API Analyzer descriptions to be sent "
+                    "to OpenAI.",
+                    key=f"norm_consent_{selected_region}",
+                )
+                norm_api_key = openai_api_key()
+                _nc1, _nc2 = st.columns([3, 1])
+                with _nc1:
+                    _do_normalize = st.button(
+                        f"Normalize selected ({_btn_ent_label}, {_btn_ep_label})",
+                        icon=":material/auto_fix_high:",
+                        type="primary",
+                        key=f"normalize_selected_{selected_region}",
+                        disabled=(total_sel == 0 or not norm_consent or not norm_api_key),
+                        use_container_width=True,
+                    )
+                with _nc2:
+                    _do_save = st.button(
+                        "Save draft",
+                        icon=":material/save:",
+                        key=f"save_decisions_{selected_region}",
+                        use_container_width=True,
+                        help="Save AI suggestions and Approved/Comment selections to disk so they survive page reload.",
+                    )
+                if _do_save:
+                    _dec_snapshot = {
+                        "entities": {
+                            entity_rows_meta[i]: {
+                                "selection": edited_entities[i].get("Approved", "Original"),
+                                "comment": edited_entities[i].get("Comment", ""),
+                            }
+                            for i in range(len(edited_entities))
+                        },
+                        "attributes": {
+                            f"{attr_rows_meta[i][0]}:{attr_rows_meta[i][1]}": {
+                                "selection": edited_attrs[i].get("Approved", "Original"),
+                                "comment": edited_attrs[i].get("Comment", ""),
+                            }
+                            for i in range(len(edited_attrs))
+                        },
+                        "endpoints": {
+                            f"{endpoint_rows_meta[i][0]}:{endpoint_rows_meta[i][1]}": {
+                                "selection": edited_endpoints[i].get("Approved", "Original"),
+                                "comment": edited_endpoints[i].get("Comment", ""),
+                            }
+                            for i in range(len(edited_endpoints))
+                        },
+                    }
+                    st.session_state["regional_decisions"][selected_region] = _dec_snapshot
+                    _save_norm_draft(
+                        REGIONAL_REVIEWS_ROOT,
+                        selected_region,
+                        {
+                            "region": selected_region,
+                            "normalizations": dict(
+                                st.session_state["regional_normalizations"]
+                            ),
+                            "endpointNormalizations": dict(
+                                st.session_state["regional_endpoint_normalizations"]
+                            ),
+                            "decisions": _dec_snapshot,
+                        },
+                    )
+                    st.success("Draft saved — AI suggestions and decisions will reload on next page open.")
+                if _do_normalize:
+                    norm_provider = OpenAISemanticProvider(
+                        api_key=norm_api_key or "",
+                        model=norm_model,
+                    )
+                    norm_progress = st.progress(0, text="Checking provider access")
+                    try:
+                        norm_provider.validate_connection()
+                        regional_inventory = [
+                            {
+                                "api": branch["api"],
+                                "entity": mb["name"],
+                                "attributes": [
+                                    {"name": f["Field"], "type": f["Type"]} for f in mb["fields"]
+                                ],
+                            }
+                            for branch in entire_region_tree
+                            for mb in branch["models"]
+                        ]
+                        ep_inventory = [
+                            {
+                                "api": row["API"],
+                                "operation": row["Endpoint (original)"],
+                                "method": row["Method"],
+                                "route": row["Route"],
+                            }
+                            for row in (edited_endpoints or [])
+                        ]
+                        done = 0
+                        for review_id, ent_row in sel_entities:
+                            norm_progress.progress(
+                                done / total_sel,
+                                text=(
+                                    f"Normalizing entity {ent_row['API']} · "
+                                    f"{ent_row['Entity (original)']}"
+                                ),
+                            )
+                            run_id, entity_id = review_id.split(":", 1)
+                            sel_run = runs[run_id]
+                            st.session_state["regional_normalizations"][review_id] = (
+                                normalize_regional_entity(
+                                    sel_run["discovery_model"],
+                                    entity_id,
+                                    sel_run.get("phase_2_artifacts", {}).get(
+                                        "semantic-metadata.json"
+                                    ),
+                                    norm_provider,
+                                    regional_inventory,
+                                )
+                            )
+                            done += 1
+                        for (run_id, op_id), ep_row in sel_endpoints:
+                            norm_progress.progress(
+                                done / total_sel,
+                                text=(
+                                    f"Normalizing endpoint {ep_row['API']} · "
+                                    f"{ep_row['Endpoint (original)']}"
+                                ),
+                            )
+                            ep_run_data = runs[run_id]
+                            st.session_state["regional_endpoint_normalizations"][
+                                f"{run_id}:{op_id}"
+                            ] = normalize_regional_endpoint(
+                                ep_run_data["discovery_model"],
+                                op_id,
+                                ep_run_data.get("phase_2_artifacts", {}).get(
+                                    "semantic-metadata.json"
+                                ),
+                                norm_provider,
+                                ep_inventory,
+                            )
+                            done += 1
+                        norm_progress.progress(1.0, text="Normalization complete — auto-saving draft")
+                        _save_norm_draft(
+                            REGIONAL_REVIEWS_ROOT,
+                            selected_region,
+                            {
+                                "region": selected_region,
+                                "normalizations": dict(
+                                    st.session_state["regional_normalizations"]
+                                ),
+                                "endpointNormalizations": dict(
+                                    st.session_state["regional_endpoint_normalizations"]
+                                ),
+                                "decisions": st.session_state["regional_decisions"].get(
+                                    selected_region, {}
+                                ),
+                            },
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        norm_progress.empty()
+                        st.error(
+                            "Normalization stopped. Existing proposals were kept. "
+                            f"Error: {type(exc).__name__}."
+                        )
 
                 # Rebuild decisions dict from flat table edits
                 decisions: dict[str, dict] = {}
@@ -2319,6 +2673,186 @@ with regional_tab:
                         "selection": row["Approved"],
                         "comment": row["Comment"],
                     }
+
+                # ── Mapping & gap analysis ──────────────────────────────────────
+                with st.expander("Mapping & gap analysis", expanded=False):
+                    ent_no_suggest = sum(
+                        1 for r in edited_entities if r.get("AI suggestion", "—") == "—"
+                    )
+                    attr_no_suggest = sum(
+                        1 for r in edited_attrs if r.get("AI suggestion", "—") == "—"
+                    )
+                    ep_no_suggest = sum(
+                        1 for r in (edited_endpoints or [])
+                        if r.get("AI suggestion", "—") == "—"
+                    )
+                    ent_no_domain = sum(
+                        1 for r in edited_entities
+                        if r.get("Domain") == "Awaiting API Analyzer"
+                    )
+                    ep_no_domain = sum(
+                        1 for r in (edited_endpoints or [])
+                        if r.get("Domain") == "Awaiting API Analyzer"
+                        or r.get("Capability") == "Awaiting API Analyzer"
+                    )
+
+                    st.markdown("##### Coverage gaps")
+                    gc1, gc2, gc3 = st.columns(3)
+                    with gc1:
+                        st.metric("Entities without AI suggestion", ent_no_suggest)
+                        st.metric("Entities awaiting analyzer", ent_no_domain)
+                    with gc2:
+                        st.metric("Attributes without AI suggestion", attr_no_suggest)
+                    with gc3:
+                        st.metric("Endpoints without AI suggestion", ep_no_suggest)
+                        st.metric("Endpoints awaiting analyzer", ep_no_domain)
+
+                    # Entity mapping
+                    st.markdown("##### Entity normalization mapping")
+                    ent_mapping_rows = []
+                    for r in edited_entities:
+                        ai_sug = r.get("AI suggestion", "—")
+                        approved = r.get("Approved", "Original")
+                        effective = (
+                            ai_sug
+                            if approved == "AI suggestion" and ai_sug != "—"
+                            else r["Entity (original)"]
+                        )
+                        if ai_sug == "—":
+                            status = "No suggestion"
+                        elif effective != r["Entity (original)"]:
+                            status = "Renamed"
+                        else:
+                            status = "Unchanged"
+                        ent_mapping_rows.append(
+                            {
+                                "API": r["API"],
+                                "Original name": r["Entity (original)"],
+                                "Domain": r["Domain"],
+                                "AI suggestion": ai_sug,
+                                "Effective name": effective,
+                                "Status": status,
+                            }
+                        )
+                    st.dataframe(ent_mapping_rows, hide_index=True, use_container_width=True)
+
+                    # Attribute mapping
+                    st.markdown("##### Attribute normalization mapping")
+                    attr_mapping_rows = []
+                    for r in edited_attrs:
+                        ai_sug = r.get("AI suggestion", "—")
+                        approved = r.get("Approved", "Original")
+                        effective = (
+                            ai_sug
+                            if approved == "AI suggestion" and ai_sug != "—"
+                            else r["Attribute (original)"]
+                        )
+                        if ai_sug == "—":
+                            status = "No suggestion"
+                        elif effective != r["Attribute (original)"]:
+                            status = "Renamed"
+                        else:
+                            status = "Unchanged"
+                        attr_mapping_rows.append(
+                            {
+                                "API": r["API"],
+                                "Entity": r["Entity"],
+                                "Original name": r["Attribute (original)"],
+                                "Type": r["Type"],
+                                "AI suggestion": ai_sug,
+                                "Effective name": effective,
+                                "Status": status,
+                            }
+                        )
+                    st.dataframe(attr_mapping_rows, hide_index=True, use_container_width=True)
+
+                    # Endpoint mapping
+                    if edited_endpoints:
+                        st.markdown("##### Endpoint normalization mapping")
+                        ep_mapping_rows = []
+                        for r in edited_endpoints:
+                            ai_sug = r.get("AI suggestion", "—")
+                            approved = r.get("Approved", "Original")
+                            effective = (
+                                ai_sug
+                                if approved == "AI suggestion" and ai_sug != "—"
+                                else r["Endpoint (original)"]
+                            )
+                            if ai_sug == "—":
+                                status = "No suggestion"
+                            elif effective != r["Endpoint (original)"]:
+                                status = "Renamed"
+                            else:
+                                status = "Unchanged"
+                            ep_mapping_rows.append(
+                                {
+                                    "API": r["API"],
+                                    "Method": r["Method"],
+                                    "Route": r["Route"],
+                                    "Domain": r["Domain"],
+                                    "Capability": r["Capability"],
+                                    "Original name": r["Endpoint (original)"],
+                                    "AI suggestion": ai_sug,
+                                    "Effective name": effective,
+                                    "Status": status,
+                                }
+                            )
+                        st.dataframe(ep_mapping_rows, hide_index=True, use_container_width=True)
+
+                    # Conflict detection
+                    st.markdown("##### Naming conflicts")
+                    # Intra-API: same API + same effective entity name but different originals
+                    api_eff: dict[tuple[str, str], list[str]] = {}
+                    for r in ent_mapping_rows:
+                        key = (r["API"], r["Effective name"])
+                        api_eff.setdefault(key, []).append(r["Original name"])
+                    intra = [
+                        {
+                            "API": api,
+                            "Effective name": name,
+                            "Conflicting originals": " / ".join(sorted(origs)),
+                            "Type": "Intra-API conflict",
+                        }
+                        for (api, name), origs in api_eff.items()
+                        if len(origs) > 1
+                    ]
+                    # Cross-API: same effective name appears in 2+ different APIs (merge)
+                    eff_apis: dict[str, list[str]] = {}
+                    for r in ent_mapping_rows:
+                        eff_apis.setdefault(r["Effective name"], []).append(r["API"])
+                    cross = [
+                        {
+                            "API": ", ".join(sorted(set(apis))),
+                            "Effective name": name,
+                            "Conflicting originals": "",
+                            "Type": "Cross-API merge",
+                        }
+                        for name, apis in eff_apis.items()
+                        if len(set(apis)) > 1
+                    ]
+                    # Attribute type mismatch: same entity effective + same attr effective, diff types
+                    attr_key_types: dict[tuple[str, str], set[str]] = {}
+                    for ent_r in ent_mapping_rows:
+                        for attr_r in attr_mapping_rows:
+                            if attr_r["API"] == ent_r["API"] and attr_r["Entity"] == ent_r["Original name"]:
+                                combo = (ent_r["Effective name"], attr_r["Effective name"])
+                                attr_key_types.setdefault(combo, set()).add(attr_r["Type"])
+                    type_mismatches = [
+                        {
+                            "API": "multiple",
+                            "Effective name": f"{ent}/{attr}",
+                            "Conflicting originals": " / ".join(sorted(types)),
+                            "Type": "Attribute type mismatch (will not merge)",
+                        }
+                        for (ent, attr), types in attr_key_types.items()
+                        if len(types) > 1
+                    ]
+                    all_conflicts = intra + cross + type_mismatches
+                    if all_conflicts:
+                        st.warning(f"{len(all_conflicts)} conflict(s) / merge(s) detected.")
+                        st.dataframe(all_conflicts, hide_index=True, use_container_width=True)
+                    else:
+                        st.success("No naming conflicts detected.")
 
                 st.divider()
                 st.markdown("#### Approve and generate regional artifacts")
@@ -2496,20 +3030,31 @@ with acord_ingestion_tab:
                 help="The approved ACORD release or package version used for this ingestion.",
                 key="acord_reference_version",
             )
-        acord_file: UploadedFile | None = st.file_uploader(
-            "ACORD OpenAPI document",
-            type=["json", "yaml", "yml"],
-            max_upload_size=10,
-            help="OpenAPI 3.x JSON or YAML, up to 10 MB.",
+        acord_files: list[UploadedFile] = st.file_uploader(
+            "ACORD OpenAPI documents",
+            type=["json", "yaml", "yml", "zip"],
+            accept_multiple_files=True,
+            help=("One or more OpenAPI 3.x JSON or YAML files, or a ZIP archive containing them."),
             key="acord_document",
         )
-        selected_acord_file = acord_file or st.session_state.get("acord_document")
-        if selected_acord_file is not None:
-            st.success(
-                f"Specification selected: **{selected_acord_file.name}** · "
-                f"{len(selected_acord_file.getvalue()):,} bytes",
-                icon=":material/attach_file:",
-            )
+        selected_acord_files: list[UploadedFile] = (
+            acord_files or st.session_state.get("acord_document") or []
+        )
+        for _f in selected_acord_files:
+            if not hasattr(_f, "name"):
+                continue
+            _suffix = _f.name.lower().rsplit(".", 1)[-1] if "." in _f.name else ""
+            if _suffix == "zip":
+                st.success(
+                    f"ZIP archive: **{_f.name}** · {len(_f.getvalue()):,} bytes"
+                    " — YAML/JSON files will be extracted and ingested",
+                    icon=":material/folder_zip:",
+                )
+            else:
+                st.success(
+                    f"Specification selected: **{_f.name}** · {len(_f.getvalue()):,} bytes",
+                    icon=":material/attach_file:",
+                )
         usage_authorized = st.checkbox(
             "I confirm that this ACORD document is approved for local ingestion and indexing.",
             key="acord_usage_authorized",
@@ -2527,34 +3072,65 @@ with acord_ingestion_tab:
             missing_inputs.append("reference label")
         if not acord_version.strip():
             missing_inputs.append("approved version")
-        if selected_acord_file is None:
+        if not selected_acord_files:
             missing_inputs.append("ACORD YAML/JSON file")
         if missing_inputs:
             st.error("Required input missing: " + ", ".join(missing_inputs) + ".")
         elif not usage_authorized:
             st.error("Confirm that the ACORD document is approved for local ingestion.")
         else:
-            try:
-                with st.status(
-                    "Building the independent ACORD RAG pipeline...", expanded=True
-                ) as status:
-                    st.write("Parsing OpenAPI endpoints and recursive model structure")
-                    st.write(
-                        "Preserving descriptions, comments, constraints, and JSON-pointer lineage"
-                    )
-                    st.write("Creating endpoint/entity chunks and the local semantic index")
-                    ingest_acord_reference(
-                        source_content=selected_acord_file.getvalue(),
-                        source_name=selected_acord_file.name,
-                        reference_label=acord_label,
-                        reference_version=acord_version,
-                        progress=st.write,
-                    )
-                    status.update(
-                        label="ACORD ingestion complete", state="complete", expanded=False
-                    )
-            except (OSError, RuntimeError, ValueError) as exc:
-                st.error(str(exc))
+            # Resolve all YAML/JSON sources — expand any ZIP archives first.
+            all_sources: list[tuple[str, bytes]] = []
+            expand_errors: list[str] = []
+            for _uploaded in selected_acord_files:
+                _sfx = _uploaded.name.lower().rsplit(".", 1)[-1] if "." in _uploaded.name else ""
+                if _sfx == "zip":
+                    try:
+                        _extracted = _extract_yaml_json_from_zip(
+                            _uploaded.getvalue(), _uploaded.name
+                        )
+                        if _extracted:
+                            all_sources.extend(_extracted)
+                        else:
+                            expand_errors.append(
+                                f"No YAML/JSON files found inside '{_uploaded.name}'."
+                            )
+                    except ValueError as _exc:
+                        expand_errors.append(str(_exc))
+                else:
+                    all_sources.append((_uploaded.name, _uploaded.getvalue()))
+            for _err in expand_errors:
+                st.error(_err)
+            if not all_sources:
+                if not expand_errors:
+                    st.error("No YAML or JSON files found to ingest.")
+            else:
+                for _source_name, _source_content in all_sources:
+                    try:
+                        with st.status(
+                            f"Building ACORD RAG pipeline for **{_source_name}**…",
+                            expanded=True,
+                        ) as _status:
+                            st.write("Parsing OpenAPI endpoints and recursive model structure")
+                            st.write(
+                                "Preserving descriptions, comments, constraints, "
+                                "and JSON-pointer lineage"
+                            )
+                            st.write("Creating endpoint/entity chunks and the local semantic index")
+                            ingest_acord_reference(
+                                source_content=_source_content,
+                                source_name=_source_name,
+                                reference_label=acord_label,
+                                reference_version=acord_version,
+                                progress=st.write,
+                            )
+                            _status.update(
+                                label=f"ACORD ingestion complete: {_source_name}",
+                                state="complete",
+                                expanded=False,
+                            )
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        st.error(f"{_source_name}: {exc}")
 
     active_acord_id = st.session_state.get("active_acord_id")
     active_acord = acord_runs.get(active_acord_id)

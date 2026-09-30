@@ -4,6 +4,34 @@ Last updated: 2026-09-30
 Current release: Phase 2 API Analyzer Agent  
 Overall status: In progress
 
+## Plan amendment - Dual-source discovery crawling: YAML config + repo code (2026-09-30)
+
+Status: Complete.
+
+- [x] **NS-DISC-01a** Add `SourceKind.YAML_CONFIG = "yaml_config"` to the model contract.
+- [x] **NS-DISC-01b** Create `src/canonical_model_generator/discovery_agent/yaml_config.py` with
+      `discover_yaml_config(repository, region, system) → DiscoveryModel` that scans for
+      `host.json`, `local.settings.json`, `appsettings*.json`, `extensions.json`,
+      `function.json`, and `*.yml`/`*.yaml` files, returning sources and parse-error diagnostics.
+      Evidence/lineage are excluded because the model validator requires subject_ids that
+      reference operations/entities/attributes, which config files are not.  A companion
+      `config_metadata(repository)` function exposes richer config data (host version, app
+      setting keys, pipeline trigger info) outside the DiscoveryModel contract.
+- [x] **NS-DISC-01c** Insert a `yaml_config` LangGraph node between `validate_inputs` and
+      `roslyn` in `workflow.py`.  Add `yaml_model: DiscoveryModel` to `DiscoveryState`.
+      Add `_merge_yaml_into_model` helper in `_reconcile` that merges yaml sources and
+      diagnostics into the primary model after Roslyn/OpenAPI reconciliation.
+- [x] **NS-DISC-01d** Extend `RoslynExtractor.cs` with an Azure Functions isolated worker
+      detection pass: finds methods decorated with `[Function]` and `[HttpTrigger]` attributes,
+      extracts HTTP method(s), route, request type, response type, and non-framework parameters,
+      while excluding `FunctionContext`, `HttpRequestData`, and `HttpResponseData`.
+      Extends `SyntaxFirstString` to handle `nameof()` expressions for function names.
+- [x] **NS-DISC-01e** Update `tests/test_graph_artifacts.py` event count from 6 to 7 for the new
+      7-node graph.
+
+Verified on 2026-09-30: .NET build 0 warnings/0 errors; Python syntax OK; Ruff lint/format clean;
+84 non-e2e non-isolation tests pass; the 2 pre-existing isolation failures are unrelated.
+
 ## Plan amendment - Regional normalization review UI fixes (2026-09-30)
 
 Status: Complete.

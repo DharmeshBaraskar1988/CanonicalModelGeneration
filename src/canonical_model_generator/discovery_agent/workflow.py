@@ -9,10 +9,11 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from canonical_model_generator.discovery_agent.artifacts import generate_artifacts
-from canonical_model_generator.discovery_agent.model import DiscoveryModel
+from canonical_model_generator.discovery_agent.model import DiscoveryModel, Summary
 from canonical_model_generator.discovery_agent.openapi import discover_openapi
 from canonical_model_generator.discovery_agent.reconcile import reconcile
 from canonical_model_generator.discovery_agent.roslyn import extract_roslyn
+from canonical_model_generator.discovery_agent.yaml_config import discover_yaml_config
 
 
 class DiscoveryState(TypedDict, total=False):
@@ -24,6 +25,7 @@ class DiscoveryState(TypedDict, total=False):
     output: str
     roslyn_model: DiscoveryModel
     openapi_model: DiscoveryModel
+    yaml_model: DiscoveryModel
     model: DiscoveryModel
     artifacts: dict[str, str]
     errors: list[str]
@@ -33,13 +35,15 @@ class DiscoveryState(TypedDict, total=False):
 def build_graph():
     builder = StateGraph(DiscoveryState)
     builder.add_node("validate_inputs", _validate_inputs)
+    builder.add_node("yaml_config", _yaml_config)
     builder.add_node("roslyn", _roslyn)
     builder.add_node("openapi", _openapi)
     builder.add_node("reconcile", _reconcile)
     builder.add_node("validate_model", _validate_model)
     builder.add_node("generate_artifacts", _generate_artifacts)
     builder.add_edge(START, "validate_inputs")
-    builder.add_edge("validate_inputs", "roslyn")
+    builder.add_edge("validate_inputs", "yaml_config")
+    builder.add_edge("yaml_config", "roslyn")
     builder.add_edge("roslyn", "openapi")
     builder.add_edge("openapi", "reconcile")
     builder.add_edge("reconcile", "validate_model")
@@ -71,6 +75,10 @@ def run_discovery(
     )
 
 
+def _unique_by_id(items: list[Any]) -> list[Any]:
+    return list({item.id: item for item in reversed(items)}.values())[::-1]
+
+
 def _validate_inputs(state: DiscoveryState) -> DiscoveryState:
     errors = list(state.get("errors", []))
     repository = Path(state["repository"]).resolve() if state["repository"] else None
@@ -92,6 +100,19 @@ def _validate_inputs(state: DiscoveryState) -> DiscoveryState:
     if not state["region"].strip() or not state["system"].strip():
         errors.append("Region and system are required")
     return _event(state, "validate_inputs", "error" if errors else "ok", errors=errors)
+
+
+def _yaml_config(state: DiscoveryState) -> DiscoveryState:
+    if state.get("errors") or not state.get("repository"):
+        return _event(state, "yaml_config", "skipped")
+    try:
+        yaml_model = discover_yaml_config(
+            Path(state["repository"]), state["region"], state["system"]
+        )
+        return _event(state, "yaml_config", "ok", yaml_model=yaml_model)
+    except Exception as exc:
+        # YAML config is supplementary — log the error but do not block the workflow.
+        return _event(state, "yaml_config", "error", errors=[*state.get("errors", []), str(exc)])
 
 
 def _roslyn(state: DiscoveryState) -> DiscoveryState:
@@ -128,7 +149,37 @@ def _reconcile(state: DiscoveryState) -> DiscoveryState:
         model = reconcile(state["roslyn_model"], state["openapi_model"])
     else:
         model = state["roslyn_model"]
+    if state.get("yaml_model") is not None:
+        model = _merge_yaml_into_model(model, state["yaml_model"])
     return _event(state, "reconcile", "ok", model=model)
+
+
+def _merge_yaml_into_model(model: DiscoveryModel, yaml_model: DiscoveryModel) -> DiscoveryModel:
+    """Merge YAML config sources and diagnostics into *model*.
+
+    Evidence and lineage from the YAML config are intentionally excluded: the model
+    validator requires evidence subject_ids to reference operations, entities, or
+    attributes, but YAML config evidence references source descriptors.  Sources and
+    parse-error diagnostics are the useful contract-level signals that survive the
+    validator.
+    """
+    merged = model.model_copy(deep=True)
+    merged.sources = sorted(
+        _unique_by_id([*model.sources, *yaml_model.sources]),
+        key=lambda s: s.path,
+    )
+    merged.diagnostics = sorted(
+        _unique_by_id([*model.diagnostics, *yaml_model.diagnostics]),
+        key=lambda d: d.id,
+    )
+    merged.summary = Summary(
+        operation_count=len(merged.operations),
+        entity_count=len(merged.entities),
+        enum_count=len(merged.enums),
+        relationship_count=len(merged.relationships),
+        diagnostic_count=len(merged.diagnostics),
+    )
+    return merged
 
 
 def _validate_model(state: DiscoveryState) -> DiscoveryState:

@@ -27,6 +27,7 @@ class ContractModel(BaseModel):
 class SourceKind(StrEnum):
     ROSLYN = "roslyn"
     OPENAPI = "openapi"
+    YAML_CONFIG = "yaml_config"
 
 
 class RunStatus(StrEnum):

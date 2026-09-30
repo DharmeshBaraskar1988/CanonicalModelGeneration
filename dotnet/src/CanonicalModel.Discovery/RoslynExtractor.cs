@@ -267,6 +267,116 @@ public static class RoslynExtractor
             }
         }
 
+        // Azure Functions Isolated Worker: detect [Function]-decorated methods.
+        foreach (var tree in compilation.SyntaxTrees)
+        {
+            foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
+            {
+                foreach (var method in typeDecl.Members.OfType<MethodDeclarationSyntax>())
+                {
+                    var functionName = AzureFunctionName(method.AttributeLists);
+                    if (functionName is null)
+                    {
+                        continue;
+                    }
+
+                    // For now, only HTTP triggers produce operations.
+                    // Non-HTTP triggers (Queue, Blob, Timer, CosmosDB, …) are skipped.
+                    var httpTrigger = AzureHttpTrigger(method.ParameterList);
+                    if (httpTrigger is null)
+                    {
+                        continue;
+                    }
+
+                    var (httpMethods, triggerRoute) = httpTrigger.Value;
+                    var route = triggerRoute is not null
+                        ? "/" + triggerRoute.TrimStart('/')
+                        : $"/api/{functionName}";
+
+                    var semanticModel = compilation.GetSemanticModel(method.SyntaxTree);
+
+                    // Request type: prefer [FromBody] parameter; fall back to first
+                    // non-framework body parameter on mutating verbs.
+                    INamedTypeSymbol? requestType = null;
+                    var fromBodyParam = method.ParameterList.Parameters.FirstOrDefault(p =>
+                        HasSyntaxAttribute(p.AttributeLists, "FromBody"));
+                    if (fromBodyParam?.Type is not null)
+                    {
+                        requestType = ResolveProjectType(fromBodyParam.Type, semanticModel, compilation);
+                        if (requestType is not null) referencedTypes.Add(requestType);
+                    }
+
+                    if (requestType is null &&
+                        httpMethods.Any(m => m.Equals("post", StringComparison.OrdinalIgnoreCase) ||
+                                            m.Equals("put", StringComparison.OrdinalIgnoreCase) ||
+                                            m.Equals("patch", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var candidateParam = method.ParameterList.Parameters.FirstOrDefault(p =>
+                            p.Type is not null &&
+                            !HasSyntaxAttribute(p.AttributeLists, "HttpTrigger") &&
+                            !IsAzureFunctionsFrameworkParam(p));
+                        if (candidateParam?.Type is not null)
+                        {
+                            var candidate = ResolveProjectType(candidateParam.Type, semanticModel, compilation);
+                            if (candidate is not null && IsRequestType(candidate))
+                            {
+                                requestType = candidate;
+                                referencedTypes.Add(requestType);
+                            }
+                        }
+                    }
+
+                    // Response type: resolved return type when it is not an AF framework type.
+                    INamedTypeSymbol? responseType = null;
+                    var returnTypeName = method.ReturnType.ToString().Split('.').Last().TrimEnd('?');
+                    if (returnTypeName is not "HttpResponseData" and not "Task" and not "void")
+                    {
+                        var resolved = ResolveProjectType(method.ReturnType, semanticModel, compilation);
+                        if (resolved is not null)
+                        {
+                            responseType = resolved;
+                            referencedTypes.Add(responseType);
+                        }
+                    }
+
+                    var parameters = method.ParameterList.Parameters
+                        .Where(p => !HasSyntaxAttribute(p.AttributeLists, "HttpTrigger") &&
+                                    !IsAzureFunctionsFrameworkParam(p))
+                        .Select(p =>
+                        {
+                            var name = p.Identifier.Text;
+                            var loc = route.Contains($"{{{name}}}", StringComparison.OrdinalIgnoreCase)
+                                ? "route"
+                                : HasSyntaxAttribute(p.AttributeLists, "FromBody") ? "body" : "query";
+                            var resolvedType = p.Type is null
+                                ? null
+                                : ResolveProjectType(p.Type, semanticModel, compilation);
+                            return new ParameterRecord(
+                                name,
+                                Display(resolvedType) ?? p.Type?.ToString() ?? "unknown",
+                                loc,
+                                p.Default is null && p.Type is not NullableTypeSyntax);
+                        }).ToArray();
+
+                    foreach (var httpMethod in httpMethods)
+                    {
+                        var methodUpper = httpMethod.ToUpperInvariant();
+                        var key = $"{methodUpper}:{route}";
+                        if (!operationKeys.Add(key)) continue;
+
+                        operations.Add(new OperationRecord(
+                            functionName,
+                            methodUpper,
+                            route,
+                            Display(requestType),
+                            parameters,
+                            [new ResponseRecord(200, Display(responseType))],
+                            Location(method)));
+                    }
+                }
+            }
+        }
+
         ExpandReferencedTypes(referencedTypes);
         var types = referencedTypes
             .Where(type => type.Locations.Any(location => location.IsInSource))
@@ -364,11 +474,26 @@ public static class RoslynExtractor
         return attribute is null ? null : SyntaxFirstString(attribute);
     }
 
-    private static string? SyntaxFirstString(AttributeSyntax attribute) =>
-        attribute.ArgumentList?.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax literal &&
-        literal.Token.Value is string value
-            ? value
-            : null;
+    private static string? SyntaxFirstString(AttributeSyntax attribute)
+    {
+        var firstArg = attribute.ArgumentList?.Arguments.FirstOrDefault();
+        if (firstArg is null) return null;
+        // String literal: [Attr("value")]
+        if (firstArg.Expression is LiteralExpressionSyntax literal &&
+            literal.Token.Value is string literalValue)
+        {
+            return literalValue;
+        }
+        // nameof expression: [Attr(nameof(Identifier))]
+        if (firstArg.Expression is InvocationExpressionSyntax invocation &&
+            invocation.Expression is IdentifierNameSyntax { Identifier.Text: "nameof" } &&
+            invocation.ArgumentList.Arguments.Count == 1 &&
+            invocation.ArgumentList.Arguments[0].Expression is SimpleNameSyntax nameofArg)
+        {
+            return nameofArg.Identifier.Text;
+        }
+        return null;
+    }
 
     private static (string Method, string? Route)? HttpAttribute(ImmutableArray<AttributeData> attributes)
     {
@@ -780,4 +905,79 @@ public static class RoslynExtractor
 
     private static INamedTypeSymbol? FindType(Compilation compilation, string? name) =>
         name is null ? null : compilation.GetTypeByMetadataName(name);
+
+    // ------------------------------------------------------------------
+    // Azure Functions Isolated Worker helpers
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the function name from a [Function("name")] or [Function(nameof(X))] attribute,
+    /// or null if the method is not an Azure Function.
+    /// </summary>
+    private static string? AzureFunctionName(SyntaxList<AttributeListSyntax> lists)
+    {
+        foreach (var attribute in lists.SelectMany(l => l.Attributes))
+        {
+            var attrName = attribute.Name.ToString().Split('.').Last()
+                .Replace("Attribute", string.Empty, StringComparison.Ordinal);
+            if (attrName == "Function")
+            {
+                return SyntaxFirstString(attribute);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Finds the [HttpTrigger] parameter and returns the declared HTTP methods and route.
+    /// Returns null for non-HTTP triggers (queue, blob, timer, cosmos, etc.).
+    /// </summary>
+    private static (string[] Methods, string? Route)? AzureHttpTrigger(ParameterListSyntax paramList)
+    {
+        foreach (var parameter in paramList.Parameters)
+        {
+            foreach (var attribute in parameter.AttributeLists.SelectMany(l => l.Attributes))
+            {
+                var attrName = attribute.Name.ToString().Split('.').Last()
+                    .Replace("Attribute", string.Empty, StringComparison.Ordinal);
+                if (attrName != "HttpTrigger") continue;
+
+                // [HttpTrigger(AuthorizationLevel.xxx, "get", "post", Route = "...")]
+                // First positional arg is AuthorizationLevel (skip).
+                // Remaining positional string args are the HTTP methods.
+                var args = attribute.ArgumentList?.Arguments ?? default;
+                var methods = args
+                    .Skip(1)
+                    .Where(a => a.NameEquals is null)
+                    .Select(a => a.Expression is LiteralExpressionSyntax lit
+                        ? lit.Token.Value as string : null)
+                    .Where(m => m is not null)
+                    .Select(m => m!)
+                    .ToArray();
+
+                var routeArg = args.FirstOrDefault(a =>
+                    a.NameEquals?.Name.Identifier.Text == "Route");
+                string? route = null;
+                if (routeArg?.Expression is LiteralExpressionSyntax routeLit &&
+                    routeLit.Token.Value is string routeValue)
+                {
+                    route = routeValue;
+                }
+
+                return (methods.Length > 0 ? methods : ["GET", "POST"], route);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Returns true for Azure Functions framework parameter types that should not be
+    /// treated as domain model parameters.
+    /// </summary>
+    private static bool IsAzureFunctionsFrameworkParam(ParameterSyntax parameter)
+    {
+        var typeName = parameter.Type?.ToString().Split('.').Last()
+            .TrimEnd('?') ?? string.Empty;
+        return typeName is "FunctionContext" or "HttpRequestData" or "HttpResponseData";
+    }
 }

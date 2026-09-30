@@ -11,9 +11,11 @@ from canonical_model_generator.api_analyzer.contracts import (
     EntitySemantic,
     EnumSemantic,
     NormalizedEntity,
+    NormalizedOperation,
 )
 from canonical_model_generator.api_analyzer.prompts import (
     CODE_SYSTEM_PROMPT,
+    ENDPOINT_NORMALIZATION_SYSTEM_PROMPT,
     ENDPOINT_SYSTEM_PROMPT,
     ENTITY_SYSTEM_PROMPT,
     ENUM_SYSTEM_PROMPT,
@@ -63,6 +65,9 @@ class OpenAISemanticProvider:
 
     def normalize_entity(self, context: dict[str, Any]) -> NormalizedEntity:
         return self._parse(NormalizedEntity, NORMALIZATION_SYSTEM_PROMPT, context)
+
+    def normalize_operation(self, context: dict[str, Any]) -> NormalizedOperation:
+        return self._parse(NormalizedOperation, ENDPOINT_NORMALIZATION_SYSTEM_PROMPT, context)
 
     def _parse(self, output_type: type[Any], instructions: str, context: dict[str, Any]) -> Any:
         payload = json.dumps(context, indent=2, sort_keys=True)

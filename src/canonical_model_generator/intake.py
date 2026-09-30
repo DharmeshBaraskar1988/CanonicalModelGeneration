@@ -31,11 +31,12 @@ class RepositoryInventory:
     solutions: tuple[str, ...]
     projects: tuple[str, ...]
     controllers: tuple[str, ...]
+    azure_function_projects: tuple[str, ...]
     openapi_candidates: tuple[str, ...]
 
     @property
     def ready_for_discovery(self) -> bool:
-        return bool(self.projects and self.controllers)
+        return bool(self.projects and (self.controllers or self.azure_function_projects))
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -86,6 +87,20 @@ def inspect_repository_zip(archive: bytes) -> RepositoryInventory:
         and "/bin/" not in f"/{lowered[name]}"
         and "/obj/" not in f"/{lowered[name]}"
     )
+    # Azure Functions isolated-worker apps always have host.json at the project root.
+    # Detect them by finding .csproj files that share a directory with host.json.
+    host_json_dirs = {
+        PurePosixPath(name).parent.as_posix()
+        for name in names
+        if PurePosixPath(name).name == "host.json"
+        and "/bin/" not in f"/{lowered[name]}"
+        and "/obj/" not in f"/{lowered[name]}"
+    }
+    azure_function_projects = tuple(
+        name
+        for name in projects
+        if PurePosixPath(name).parent.as_posix() in host_json_dirs
+    )
     openapi_candidates = tuple(
         name
         for name in names
@@ -100,6 +115,7 @@ def inspect_repository_zip(archive: bytes) -> RepositoryInventory:
         solutions=solutions,
         projects=projects,
         controllers=controllers,
+        azure_function_projects=azure_function_projects,
         openapi_candidates=openapi_candidates,
     )
 

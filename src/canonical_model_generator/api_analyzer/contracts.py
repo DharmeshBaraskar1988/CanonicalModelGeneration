@@ -77,6 +77,13 @@ class NormalizedEntity(ContractModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class NormalizedOperation(ContractModel):
+    operation_id: str
+    original_name: str = Field(min_length=1, max_length=240)
+    normalized_name: str = Field(min_length=1, max_length=240)
+    confidence: float = Field(ge=0, le=1)
+
+
 class EnumSemantic(ContractModel):
     enum_id: str
     domain: DomainSemantic
