@@ -11,3 +11,8 @@ public class ClaimMapToIDIT
 {
     public Task<ClaimIBO> Map(LossEventModel_v3 claim) => Task.FromResult(new ClaimIBO());
 }
+
+public class ClaimMapper
+{
+    public Task<ClaimModel> Map(RestResponse response) => Task.FromResult(new ClaimModel());
+}

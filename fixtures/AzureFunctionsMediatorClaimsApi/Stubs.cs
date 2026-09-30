@@ -73,5 +73,6 @@ public static class Constants
     public static class Operation
     {
         public const string ServiceCreateClaim = "CreateClaim";
+        public const string ServiceGetClaim = "GetClaim";
     }
 }
