@@ -36,12 +36,28 @@ def scope_to_endpoint_contract_models(model: DiscoveryModel) -> DiscoveryModel:
         if entity_id in candidates
     }
 
+    # Models the endpoint's handler flow touches (mapper endpoints, handler/mapper/client models).
+    operation_ids = {operation.id for operation in result.operations}
+    flow_edges: dict[str, set[str]] = {}
+    for relationship in result.relationships:
+        if (
+            relationship.kind == RelationshipKind.REFERENCES
+            and relationship.source_id in operation_ids
+        ):
+            if relationship.target_id in candidates:
+                retained_ids.add(relationship.target_id)
+        elif relationship.kind == RelationshipKind.MAPS_TO:
+            flow_edges.setdefault(relationship.source_id, set()).add(relationship.target_id)
+            flow_edges.setdefault(relationship.target_id, set()).add(relationship.source_id)
+
     pending = list(retained_ids)
     while pending:
-        entity = candidates[pending.pop()]
+        entity_id = pending.pop()
+        entity = candidates[entity_id]
         referenced = {
             entity.base_entity_id,
             *(attribute.type.reference_id for attribute in entity.attributes),
+            *flow_edges.get(entity_id, ()),
         }
         for reference_id in referenced:
             if reference_id in candidates and reference_id not in retained_ids:

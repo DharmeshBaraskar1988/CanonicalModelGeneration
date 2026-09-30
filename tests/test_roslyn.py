@@ -83,11 +83,31 @@ def test_azure_function_mediator_flow_resolves_constants_models_and_handler_trai
     # Request model comes from the command record; response from the handler's OkObjectResult.
     assert names_by_id[operation.request_entity_id] == "ClaimModel"
     assert names_by_id[operation.responses[0].entity_id] == "ClaimModel"
-    assert {"LossEventModel_v3", "ItemIdInfoModel_v3"} <= set(names_by_id.values())
-    # Backend-only models reached through mappers must not become API contract entities.
-    assert not {"SoapEnvelope", "RestResponse", "ClaimIBO", "HttpRequest"} & set(
-        names_by_id.values()
-    )
+    # Nested models plus every model the handler flow touches (mapper endpoints included).
+    assert set(names_by_id.values()) == {
+        "ClaimModel",
+        "ClaimIBO",
+        "ItemIdInfoModel_v3",
+        "LossEventModel_v3",
+        "RestResponse",
+        "SoapEnvelope",
+    }
+    ids = {name: entity_id for entity_id, name in names_by_id.items()}
+    relations = {
+        (item.kind.value, names_by_id.get(item.source_id, "op"), names_by_id[item.target_id])
+        for item in model.relationships
+        if item.kind.value in {"MAPS_TO", "REFERENCES"}
+    }
+    assert relations == {
+        ("MAPS_TO", "ClaimModel", "SoapEnvelope"),
+        ("MAPS_TO", "RestResponse", "ClaimModel"),
+        ("MAPS_TO", "LossEventModel_v3", "ClaimIBO"),
+        ("REFERENCES", "op", "ClaimIBO"),
+        ("REFERENCES", "op", "LossEventModel_v3"),
+        ("REFERENCES", "op", "RestResponse"),
+        ("REFERENCES", "op", "SoapEnvelope"),
+    }
+    assert ids["ClaimIBO"] in {item.target_id for item in model.relationships}
 
     flow = next(
         item.observed_value

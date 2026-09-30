@@ -1296,3 +1296,32 @@ What was decided.
 
 Expected benefits, costs, and constraints.
 ```
+
+## ADR-050 - Retain models touched by an endpoint's handler flow, linked by MAPS_TO and REFERENCES
+
+- Date: 2026-09-30
+- Status: Accepted; extends ADR-027 (endpoint-reachability) and the Azure Function slice of NS-DEEP-01
+
+### Context
+
+Real regional repositories route endpoints through a mediator command, a handler, mapper classes and
+backend clients (for example `CreateClaimv3` → `CreateClaimRequestv1` → handler → CMS mappers and
+`Backends\Clients\CMS\Models`). Direct request/response reachability alone dropped the backend
+models and the relationships between them. An earlier slice kept them out of the entity set as
+evidence only; the operator asked for every referenced model and relationship instead.
+
+### Decision
+
+Deterministic Roslyn tracing collects the models a flow touches: mapper source/target types
+(`GetMapper<A,B>`, `IMapper<A,B>` implementations, injected classes with a `Map` method) and project
+model types named in the handler, mapper implementations and backend client contracts. They are
+retained as entities with `MAPS_TO` (mapper source → target) and `REFERENCES` (operation → model,
+excluding the request/response model) relationships, each carrying the flow evidence and its
+handler-side source location. Request/response identity is unchanged: only the command's request
+model and the handler's response payload feed `ACCEPTS`/`RETURNS`.
+
+### Consequences
+
+- Backend models and mapper relationships are visible to downstream agents with lineage.
+- Flow-touched models are not API contracts; consumers must use `ACCEPTS`/`RETURNS` for that.
+- Discovery remains deterministic; name-based type lookup can mis-resolve duplicate simple names.

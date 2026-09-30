@@ -67,6 +67,8 @@ class RelationshipKind(StrEnum):
     CONTAINS = "CONTAINS"
     INHERITS = "INHERITS"
     CALLS = "CALLS"
+    MAPS_TO = "MAPS_TO"
+    REFERENCES = "REFERENCES"
 
 
 class RunMetadata(ContractModel):

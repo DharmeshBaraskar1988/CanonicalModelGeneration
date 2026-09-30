@@ -357,6 +357,10 @@ public static class RoslynExtractor
                             responseType = flow.ResponseModel;
                             referencedTypes.Add(responseType);
                         }
+                        foreach (var related in flow.Related)
+                        {
+                            referencedTypes.Add(related);
+                        }
                     }
 
                     var parameters = method.ParameterList.Parameters
@@ -1090,6 +1094,7 @@ public static class RoslynExtractor
         INamedTypeSymbol Command,
         INamedTypeSymbol? RequestModel,
         INamedTypeSymbol? ResponseModel,
+        IReadOnlyList<INamedTypeSymbol> Related,
         FlowRecord Record);
 
     private static readonly HashSet<string> ResultPayloadTypes =
@@ -1174,8 +1179,8 @@ public static class RoslynExtractor
             diagnostics.Add(new DiagnosticRecord(
                 "warning", "FLOW001", $"No IRequestHandler found for command {command.Name}."));
             return new MediatorFlow(
-                command, requestModel, null,
-                new FlowRecord("mediator", FullName(command), null, [], [], Location(command)));
+                command, requestModel, null, [],
+                new FlowRecord("mediator", FullName(command), null, [], [], [], Location(command)));
         }
 
         var declarations = handler.DeclaringSyntaxReferences
@@ -1235,22 +1240,138 @@ public static class RoslynExtractor
             .Order(StringComparer.Ordinal)
             .ToArray();
 
+        var orderedMappings = mappings
+            .DistinctBy(item => (item.From, item.To, item.Via))
+            .OrderBy(item => item.Via, StringComparer.Ordinal)
+            .ThenBy(item => item.From, StringComparer.Ordinal)
+            .ThenBy(item => item.To, StringComparer.Ordinal)
+            .ToArray();
+
+        // Every model the flow touches: mapper endpoints, then models used by the handler, the
+        // mapper implementations, and the backend client contracts.
+        var byFullName = sourceTypes.ToLookup(item => FullName(item), StringComparer.Ordinal);
+        var related = new List<(INamedTypeSymbol Type, string Role)>();
+        foreach (var mapping in orderedMappings)
+        {
+            if (byFullName[mapping.From].FirstOrDefault() is { } from)
+            {
+                related.Add((from, "mapping-source"));
+            }
+            if (byFullName[mapping.To].FirstOrDefault() is { } to)
+            {
+                related.Add((to, "mapping-target"));
+            }
+        }
+        related.AddRange(ModelsIn(declarations, sourceTypes).Select(item => (item, "handler")));
+
+        var mapperTypes = new List<INamedTypeSymbol>();
+        foreach (var mapping in orderedMappings)
+        {
+            mapperTypes.AddRange(mapping.Via == "GetMapper"
+                ? sourceTypes.Where(item => item.TypeKind == Microsoft.CodeAnalysis.TypeKind.Class &&
+                    ImplementsMapper(item, SimpleName(mapping.From), SimpleName(mapping.To)))
+                : sourceTypes.Where(item => item.Name == mapping.Via));
+        }
+        related.AddRange(ModelsIn(TypeDeclarations(mapperTypes), sourceTypes)
+            .Select(item => (item, "mapper")));
+
+        var clientTypes = sourceTypes.Where(item => backends.Any(backend =>
+            item.Name == backend ||
+            (backend.Length > 1 && backend[0] == 'I' && char.IsUpper(backend[1]) &&
+                item.Name == backend[1..])));
+        related.AddRange(ModelsIn(TypeDeclarations(clientTypes), sourceTypes)
+            .Select(item => (item, "client")));
+
+        var roleRank = new[] { "mapping-source", "mapping-target", "handler", "mapper", "client" };
+        var relatedTypes = related
+            .Where(item => !SymbolEqualityComparer.Default.Equals(item.Type, command))
+            .OrderBy(item => Array.IndexOf(roleRank, item.Role))
+            .ThenBy(item => FullName(item.Type), StringComparer.Ordinal)
+            .DistinctBy(item => FullName(item.Type))
+            .ToArray();
+
         return new MediatorFlow(
             command,
             requestModel,
             responseModel,
+            relatedTypes.Select(item => item.Type).ToArray(),
             new FlowRecord(
                 "mediator",
                 FullName(command),
                 FullName(handler),
-                mappings
-                    .DistinctBy(item => (item.From, item.To, item.Via))
-                    .OrderBy(item => item.Via, StringComparer.Ordinal)
-                    .ThenBy(item => item.From, StringComparer.Ordinal)
-                    .ThenBy(item => item.To, StringComparer.Ordinal)
-                    .ToArray(),
+                orderedMappings,
                 backends,
+                relatedTypes
+                    .Select(item => new RelatedTypeRecord(FullName(item.Type), item.Role))
+                    .ToArray(),
                 Location(handler)));
+    }
+
+    private static readonly string[] NonModelSuffixes =
+    [
+        "Exception", "Helper", "Client", "Mapper", "Factory", "Formatter", "Handler",
+        "Options", "Settings", "Utils", "Constants"
+    ];
+
+    private static bool IsModelType(INamedTypeSymbol type) =>
+        type.TypeKind is Microsoft.CodeAnalysis.TypeKind.Class or Microsoft.CodeAnalysis.TypeKind.Struct &&
+        !type.IsStatic && !ResultPayloadTypes.Contains(type.Name) &&
+        !NonModelSuffixes.Any(suffix => type.Name.EndsWith(suffix, StringComparison.Ordinal)) &&
+        type.GetMembers().OfType<IPropertySymbol>().Any(property =>
+            !property.IsStatic && property.DeclaredAccessibility == Accessibility.Public);
+
+    private static string SimpleName(string fullName) => fullName.Split('.').Last();
+
+    private static IEnumerable<TypeDeclarationSyntax> TypeDeclarations(IEnumerable<INamedTypeSymbol> types) =>
+        types.SelectMany(type => type.DeclaringSyntaxReferences)
+            .Select(reference => reference.GetSyntax())
+            .OfType<TypeDeclarationSyntax>();
+
+    private static bool ImplementsMapper(INamedTypeSymbol type, string from, string to) =>
+        type.DeclaringSyntaxReferences.Select(reference => reference.GetSyntax())
+            .OfType<TypeDeclarationSyntax>()
+            .Any(declaration => declaration.BaseList?.Types.Any(baseType =>
+                baseType.Type.DescendantNodesAndSelf().OfType<GenericNameSyntax>().Any(generic =>
+                    generic.Identifier.Text == "IMapper" &&
+                    generic.TypeArgumentList.Arguments.Count == 2 &&
+                    SimpleTypeName(generic.TypeArgumentList.Arguments[0]) == from &&
+                    SimpleTypeName(generic.TypeArgumentList.Arguments[1]) == to)) == true);
+
+    private static string? SimpleTypeName(TypeSyntax type) =>
+        type.DescendantNodesAndSelf().OfType<SimpleNameSyntax>().LastOrDefault()?.Identifier.Text;
+
+    /// <summary>Project model types named by object creations, locals, parameters, returns and properties.</summary>
+    private static IEnumerable<INamedTypeSymbol> ModelsIn(
+        IEnumerable<SyntaxNode> roots,
+        IReadOnlyList<INamedTypeSymbol> sourceTypes)
+    {
+        var byName = sourceTypes.Where(IsModelType).ToLookup(item => item.Name, StringComparer.Ordinal);
+        foreach (var node in roots.SelectMany(root => root.DescendantNodesAndSelf()))
+        {
+            TypeSyntax? type = node switch
+            {
+                ObjectCreationExpressionSyntax creation => creation.Type,
+                VariableDeclarationSyntax variable => variable.Type,
+                ParameterSyntax parameter => parameter.Type,
+                MethodDeclarationSyntax method => method.ReturnType,
+                PropertyDeclarationSyntax property => property.Type,
+                _ => null
+            };
+            if (type is null)
+            {
+                continue;
+            }
+            foreach (var name in type.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+            {
+                var model = byName[name.Identifier.Text]
+                    .OrderBy(item => FullName(item), StringComparer.Ordinal)
+                    .FirstOrDefault();
+                if (model is not null)
+                {
+                    yield return model;
+                }
+            }
+        }
     }
 
     private static bool ImplementsHandler(INamedTypeSymbol type, INamedTypeSymbol command) =>

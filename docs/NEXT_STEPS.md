@@ -105,7 +105,8 @@ The first unchecked item is the recommended next action.
 - [x] **NS-PROD-01 / P2.7b:** Separate API Analyzer contracts, prompts, provider adapters, and bounded tools into production namespaces; document the source/generated-file boundary and retain compatibility imports.
 - [x] **NS-PROD-02 / P2.7c:** Create explicit `discovery_agent/` and `api_analyzer/` package boundaries and require serialized `discovery-model.json` as the only runtime handoff between them.
 - [ ] **NS-P2-02 / P2.8:** Replace the currently rejected OpenAI API key with an active approved key, restart Streamlit, run Phase 2 against an approved real repository, review domain/capability and all generated semantics in `enriched-openapi.yaml`, and record acceptance evidence.
-- [ ] **NS-DISC-03:** Run discovery on the real EU claims repository and compare against `CreateClaimv3` (route, `ClaimModel` request/response, handler flow); then extend the trace to controller `Send(...)`, non-MediatR dispatch, AutoMapper `CreateMap`/`Map<T>` and `CALLS`/`MAPS_TO` relationships if the real repo needs them.
+- [x] **NS-DISC-02b / ADR-050:** Retain models touched by the handler flow (mapper endpoints, handler/mapper/client models) as entities linked by `MAPS_TO` and `REFERENCES`. Verified 2026-09-30 on the synthetic fixture.
+- [ ] **NS-DISC-03:** Run discovery on the real EU claims repository and compare against `CreateClaimv3` (route, `ClaimModel` request/response, handler flow); then extend the trace to controller `Send(...)`, non-MediatR dispatch, AutoMapper `CreateMap`/`Map<T>`, property-level mapping and non-HTTP (ServiceBus/Queue/Timer) triggers if the real repo needs them.
 - [ ] **NS-DEEP-01:** Implement evidence-linked call paths, mappings, persistence, integrations, security, shared-code, and Razor Page discovery before claiming a deep repository analysis.
 - [ ] **NS-09:** Run the accepted workflow against an approved real regional Quote API before production use.
 

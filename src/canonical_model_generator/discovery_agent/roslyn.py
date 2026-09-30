@@ -244,24 +244,54 @@ def roslyn_to_model(
         )
         operation_evidence_ids = [operation_evidence]
         if flow := item.get("flow"):
-            # Command/handler/mapper/backend trail is evidence, not contract: the mapped backend
-            # models stay out of the API entity set so they cannot be mistaken for request/response.
-            operation_evidence_ids.append(
-                trace(
-                    operation_id,
-                    flow["location"],
-                    {
-                        "flow": flow["kind"],
-                        "command": flow["command"],
-                        "handler": flow["handler"],
-                        "mappings": [
-                            {"from": m["from"], "to": m["to"], "via": m["via"]}
-                            for m in flow["mappings"]
-                        ],
-                        "backends": flow["backends"],
-                    },
-                )
+            # Command/handler/mapper/backend trail: kept as evidence, and the models it touches
+            # are linked with MAPS_TO (mapper source -> target) and REFERENCES (operation -> model).
+            flow_evidence = trace(
+                operation_id,
+                flow["location"],
+                {
+                    "flow": flow["kind"],
+                    "command": flow["command"],
+                    "handler": flow["handler"],
+                    "mappings": [
+                        {"from": m["from"], "to": m["to"], "via": m["via"]}
+                        for m in flow["mappings"]
+                    ],
+                    "backends": flow["backends"],
+                    "related": [{"type": r["type"], "role": r["role"]} for r in flow["related"]],
+                },
             )
+            operation_evidence_ids.append(flow_evidence)
+            for mapping in flow["mappings"]:
+                source_entity = entity_ids.get(mapping["from"])
+                target_entity = entity_ids.get(mapping["to"])
+                if source_entity and target_entity:
+                    relationships.append(
+                        Relationship(
+                            id=stable_id("relationship", "MAPS_TO", source_entity, target_entity),
+                            kind=RelationshipKind.MAPS_TO,
+                            source_id=source_entity,
+                            target_id=target_entity,
+                            evidence_ids=[flow_evidence],
+                        )
+                    )
+            contract_entities = {entity_ids.get(item["requestType"])} | {
+                entity_ids.get(response["type"]) for response in item["responses"]
+            }
+            for related in flow["related"]:
+                related_entity = entity_ids.get(related["type"])
+                if related_entity and related_entity not in contract_entities:
+                    relationships.append(
+                        Relationship(
+                            id=stable_id(
+                                "relationship", "REFERENCES", operation_id, related_entity
+                            ),
+                            kind=RelationshipKind.REFERENCES,
+                            source_id=operation_id,
+                            target_id=related_entity,
+                            evidence_ids=[flow_evidence],
+                        )
+                    )
         request_id = entity_ids.get(item["requestType"])
         parameters = [
             Parameter(

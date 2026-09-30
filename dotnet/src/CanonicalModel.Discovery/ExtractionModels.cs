@@ -32,12 +32,15 @@ public sealed record ResponseRecord(int StatusCode, string? Type);
 
 public sealed record MappingRecord(string From, string To, string Via);
 
+public sealed record RelatedTypeRecord(string Type, string Role);
+
 public sealed record FlowRecord(
     string Kind,
     string Command,
     string? Handler,
     IReadOnlyList<MappingRecord> Mappings,
     IReadOnlyList<string> Backends,
+    IReadOnlyList<RelatedTypeRecord> Related,
     LocationRecord Location);
 
 public sealed record OperationRecord(
