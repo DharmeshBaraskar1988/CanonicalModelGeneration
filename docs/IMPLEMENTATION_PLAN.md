@@ -4,6 +4,17 @@ Last updated: 2026-09-30
 Current release: Phase 2 API Analyzer Agent  
 Overall status: In progress
 
+## Plan amendment - Azure Function MediatR flow tracing (2026-09-30)
+
+Status: Complete for Azure Function endpoints using MediatR; verified on a synthetic fixture only.
+
+- [x] **NS-DISC-02a** Resolve Function name, HTTP methods and route from literals, `nameof`, semantic constants, or a syntactic `const` fallback; stop assuming the first `HttpTrigger` argument is `AuthorizationLevel`; treat `HttpRequest`/`HttpRequestMessage` as framework parameters.
+- [x] **NS-DISC-02b** Follow `mediator.Send(new Cmd(...))` to the command, its project-typed request model, its `IRequestHandler`, and the handler's `OkObjectResult`/`Ok(...)` response payload; ignore framework `IActionResult` as a model.
+- [x] **NS-DISC-02c** Record `GetMapper<A,B>`, injected mapper classes and `*Client` dependencies as `flow` evidence on the operation without adding backend models to the API entity set; warn (`FLOW001`) when no handler exists.
+- [x] **NS-DISC-02d** Add `fixtures/AzureFunctionsMediatorClaimsApi` and a Roslyn test.
+
+Deviation note: the operator requested this ahead of NS-FIX-03; it is the first Azure-Functions slice of NS-DEEP-01 and stays deterministic (no LLM).
+
 ## Plan amendment - Dual-source discovery crawling: YAML config + repo code (2026-09-30)
 
 Status: Complete.

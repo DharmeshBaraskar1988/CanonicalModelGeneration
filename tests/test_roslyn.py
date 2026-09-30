@@ -59,3 +59,50 @@ def test_syntax_degraded_controller_keeps_request_response_and_nested_models() -
         and names_by_id.get(item.target_id) == "ClaimAddress"
         for item in model.relationships
     )
+
+
+def test_azure_function_mediator_flow_resolves_constants_models_and_handler_trail() -> None:
+    repository = Path("fixtures/AzureFunctionsMediatorClaimsApi").resolve()
+    model = extract_roslyn(
+        repository / "AzureFunctionsMediatorClaimsApi.csproj",
+        repository,
+        "EU",
+        "azure-functions-mediator-claims-api",
+    )
+
+    (operation,) = model.operations
+    # Function name comes from a const chain; the HttpRequest trigger parameter is not a model.
+    assert operation.name == "CreateClaim"
+    assert (operation.method, operation.route) == (
+        "POST",
+        "/eu/cor01sh01/svc/claim/v3/service/claims",
+    )
+    assert operation.parameters == []
+
+    names_by_id = {item.id: item.name for item in model.entities}
+    # Request model comes from the command record; response from the handler's OkObjectResult.
+    assert names_by_id[operation.request_entity_id] == "ClaimModel"
+    assert names_by_id[operation.responses[0].entity_id] == "ClaimModel"
+    assert {"LossEventModel_v3", "ItemIdInfoModel_v3"} <= set(names_by_id.values())
+    # Backend-only models reached through mappers must not become API contract entities.
+    assert not {"SoapEnvelope", "RestResponse", "ClaimIBO", "HttpRequest"} & set(
+        names_by_id.values()
+    )
+
+    flow = next(
+        item.observed_value
+        for item in model.evidence
+        if item.subject_id == operation.id and "flow" in (item.observed_value or {})
+    )
+    assert flow["command"].endswith("CreateClaimRequestv1")
+    assert flow["handler"].endswith("CreateClaimRequestHandlerv1")
+    assert {
+        (m["from"].split(".")[-1], m["to"].split(".")[-1], m["via"]) for m in flow["mappings"]
+    } == {
+        ("ClaimModel", "SoapEnvelope", "GetMapper"),
+        ("RestResponse", "ClaimModel", "GetMapper"),
+        ("LossEventModel_v3", "ClaimIBO", "ClaimMapToIDIT"),
+    }
+    assert flow["backends"] == ["IAgoraClientv1", "ICMSClientv1", "IVLookupClient"]
+    assert not [item for item in model.diagnostics if item.code == "FLOW001"]
+    assert model.model_validate(model.model_dump()) == model

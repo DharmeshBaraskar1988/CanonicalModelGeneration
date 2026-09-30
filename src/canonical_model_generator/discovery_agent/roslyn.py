@@ -242,6 +242,26 @@ def roslyn_to_model(
         operation_evidence = trace(
             operation_id, item["location"], {"method": item["method"], "route": item["route"]}
         )
+        operation_evidence_ids = [operation_evidence]
+        if flow := item.get("flow"):
+            # Command/handler/mapper/backend trail is evidence, not contract: the mapped backend
+            # models stay out of the API entity set so they cannot be mistaken for request/response.
+            operation_evidence_ids.append(
+                trace(
+                    operation_id,
+                    flow["location"],
+                    {
+                        "flow": flow["kind"],
+                        "command": flow["command"],
+                        "handler": flow["handler"],
+                        "mappings": [
+                            {"from": m["from"], "to": m["to"], "via": m["via"]}
+                            for m in flow["mappings"]
+                        ],
+                        "backends": flow["backends"],
+                    },
+                )
+            )
         request_id = entity_ids.get(item["requestType"])
         parameters = [
             Parameter(
@@ -285,7 +305,7 @@ def roslyn_to_model(
                 parameters=parameters,
                 request_entity_id=request_id,
                 responses=responses,
-                evidence_ids=[operation_evidence],
+                evidence_ids=operation_evidence_ids,
             )
         )
         if request_id:

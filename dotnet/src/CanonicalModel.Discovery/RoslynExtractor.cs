@@ -268,13 +268,17 @@ public static class RoslynExtractor
         }
 
         // Azure Functions Isolated Worker: detect [Function]-decorated methods.
+        var flowDiagnostics = new List<DiagnosticRecord>();
+        var sourceTypes = new Lazy<IReadOnlyList<INamedTypeSymbol>>(() =>
+            AllSourceTypes(compilation).Where(IsProjectType).ToArray());
         foreach (var tree in compilation.SyntaxTrees)
         {
             foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
             {
                 foreach (var method in typeDecl.Members.OfType<MethodDeclarationSyntax>())
                 {
-                    var functionName = AzureFunctionName(method.AttributeLists);
+                    var semanticModel = compilation.GetSemanticModel(method.SyntaxTree);
+                    var functionName = AzureFunctionName(method.AttributeLists, semanticModel);
                     if (functionName is null)
                     {
                         continue;
@@ -282,7 +286,7 @@ public static class RoslynExtractor
 
                     // For now, only HTTP triggers produce operations.
                     // Non-HTTP triggers (Queue, Blob, Timer, CosmosDB, …) are skipped.
-                    var httpTrigger = AzureHttpTrigger(method.ParameterList);
+                    var httpTrigger = AzureHttpTrigger(method.ParameterList, semanticModel);
                     if (httpTrigger is null)
                     {
                         continue;
@@ -292,8 +296,6 @@ public static class RoslynExtractor
                     var route = triggerRoute is not null
                         ? "/" + triggerRoute.TrimStart('/')
                         : $"/api/{functionName}";
-
-                    var semanticModel = compilation.GetSemanticModel(method.SyntaxTree);
 
                     // Request type: prefer [FromBody] parameter; fall back to first
                     // non-framework body parameter on mutating verbs.
@@ -332,9 +334,27 @@ public static class RoslynExtractor
                     if (returnTypeName is not "HttpResponseData" and not "Task" and not "void")
                     {
                         var resolved = ResolveProjectType(method.ReturnType, semanticModel, compilation);
-                        if (resolved is not null)
+                        if (resolved is not null &&
+                            resolved.Name is not ("IActionResult" or "ActionResult" or "IResult"))
                         {
                             responseType = resolved;
+                            referencedTypes.Add(responseType);
+                        }
+                    }
+
+                    // Command/handler code behind the function: `_mediator.Send(new Cmd(...))`.
+                    var flow = TraceMediatorFlow(
+                        method, semanticModel, compilation, sourceTypes.Value, flowDiagnostics);
+                    if (flow is not null)
+                    {
+                        if (requestType is null && flow.RequestModel is not null)
+                        {
+                            requestType = flow.RequestModel;
+                            referencedTypes.Add(requestType);
+                        }
+                        if (responseType is null && flow.ResponseModel is not null)
+                        {
+                            responseType = flow.ResponseModel;
                             referencedTypes.Add(responseType);
                         }
                     }
@@ -371,7 +391,8 @@ public static class RoslynExtractor
                             Display(requestType),
                             parameters,
                             [new ResponseRecord(200, Display(responseType))],
-                            Location(method)));
+                            Location(method),
+                            flow?.Record));
                     }
                 }
             }
@@ -384,6 +405,8 @@ public static class RoslynExtractor
             .OrderBy(type => type.FullName, StringComparer.Ordinal)
             .ToArray();
         var sourcePaths = operations.Select(item => item.Location.Path)
+            .Concat(operations.Where(item => item.Flow is not null)
+                .Select(item => item.Flow!.Location.Path))
             .Concat(types.Select(item => item.Location.Path))
             .Concat(types.SelectMany(item => item.Properties.Select(property => property.Location.Path)))
             .Distinct(StringComparer.Ordinal)
@@ -396,6 +419,7 @@ public static class RoslynExtractor
                 item.Id,
                 item.GetMessage()))
             .Concat(workspaceDiagnostics)
+            .Concat(flowDiagnostics)
             .OrderBy(item => item.Code, StringComparer.Ordinal)
             .ThenBy(item => item.Message, StringComparer.Ordinal)
             .ToArray();
@@ -914,7 +938,9 @@ public static class RoslynExtractor
     /// Returns the function name from a [Function("name")] or [Function(nameof(X))] attribute,
     /// or null if the method is not an Azure Function.
     /// </summary>
-    private static string? AzureFunctionName(SyntaxList<AttributeListSyntax> lists)
+    private static string? AzureFunctionName(
+        SyntaxList<AttributeListSyntax> lists,
+        SemanticModel semanticModel)
     {
         foreach (var attribute in lists.SelectMany(l => l.Attributes))
         {
@@ -925,8 +951,10 @@ public static class RoslynExtractor
                 // Try string literal or nameof() first.
                 var name = SyntaxFirstString(attribute);
                 if (name is not null) return name;
-                // Fall back for constant references like OperationConstants.OperationName.
+                // Constant references such as OperationConstants.OperationName resolve to their value.
                 var firstArg = attribute.ArgumentList?.Arguments.FirstOrDefault();
+                var constant = firstArg is null ? null : ConstantString(firstArg.Expression, semanticModel);
+                if (constant is not null) return constant;
                 var fallback = firstArg?.Expression.ToString().Split('.').Last();
                 return string.IsNullOrEmpty(fallback) ? "UnknownFunction" : fallback;
             }
@@ -938,7 +966,9 @@ public static class RoslynExtractor
     /// Finds the [HttpTrigger] parameter and returns the declared HTTP methods and route.
     /// Returns null for non-HTTP triggers (queue, blob, timer, cosmos, etc.).
     /// </summary>
-    private static (string[] Methods, string? Route)? AzureHttpTrigger(ParameterListSyntax paramList)
+    private static (string[] Methods, string? Route)? AzureHttpTrigger(
+        ParameterListSyntax paramList,
+        SemanticModel semanticModel)
     {
         foreach (var parameter in paramList.Parameters)
         {
@@ -953,22 +983,16 @@ public static class RoslynExtractor
                 // Remaining positional string args are the HTTP methods.
                 var args = attribute.ArgumentList?.Arguments ?? default;
                 var methods = args
-                    .Skip(1)
-                    .Where(a => a.NameEquals is null)
-                    .Select(a => a.Expression is LiteralExpressionSyntax lit
-                        ? lit.Token.Value as string : null)
+                    .Where(a => a.NameEquals is null &&
+                        !a.Expression.ToString().Contains("AuthorizationLevel", StringComparison.Ordinal))
+                    .Select(a => ConstantString(a.Expression, semanticModel))
                     .Where(m => m is not null)
                     .Select(m => m!)
                     .ToArray();
 
                 var routeArg = args.FirstOrDefault(a =>
                     a.NameEquals?.Name.Identifier.Text == "Route");
-                string? route = null;
-                if (routeArg?.Expression is LiteralExpressionSyntax routeLit &&
-                    routeLit.Token.Value is string routeValue)
-                {
-                    route = routeValue;
-                }
+                var route = routeArg is null ? null : ConstantString(routeArg.Expression, semanticModel);
 
                 return (methods.Length > 0 ? methods : ["GET", "POST"], route);
             }
@@ -984,6 +1008,350 @@ public static class RoslynExtractor
     {
         var typeName = parameter.Type?.ToString().Split('.').Last()
             .TrimEnd('?') ?? string.Empty;
-        return typeName is "FunctionContext" or "HttpRequestData" or "HttpResponseData";
+        return typeName is "FunctionContext" or "HttpRequestData" or "HttpResponseData" or
+            "HttpRequest" or "HttpRequestMessage";
     }
+
+    /// <summary>Literal, nameof(), or compile-time constant string (including const chains).</summary>
+    private static string? ConstantString(
+        ExpressionSyntax expression,
+        SemanticModel semanticModel,
+        int depth = 0)
+    {
+        if (expression is LiteralExpressionSyntax { Token.Value: string literal })
+        {
+            return literal;
+        }
+        if (expression is InvocationExpressionSyntax
+            {
+                Expression: IdentifierNameSyntax { Identifier.Text: "nameof" },
+                ArgumentList.Arguments: [{ Expression: var argument }]
+            })
+        {
+            return (argument as SimpleNameSyntax)?.Identifier.Text ??
+                (argument as MemberAccessExpressionSyntax)?.Name.Identifier.Text;
+        }
+        var constant = semanticModel.GetConstantValue(expression);
+        if (constant.HasValue)
+        {
+            return constant.Value as string;
+        }
+
+        // Unresolved compilation: follow `Owner.Name` const declarations by syntax.
+        var segments = NameSegments(expression);
+        if (segments is null || depth > 8)
+        {
+            return null;
+        }
+        var qualifier = segments[..^1];
+        foreach (var tree in semanticModel.Compilation.SyntaxTrees)
+        {
+            foreach (var field in tree.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>()
+                         .Where(item => item.Modifiers.Any(modifier =>
+                             modifier.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ConstKeyword))))
+            {
+                var owners = field.Ancestors().OfType<TypeDeclarationSyntax>()
+                    .Select(item => item.Identifier.Text).Reverse().ToArray();
+                if (qualifier.Length > owners.Length ||
+                    !owners.TakeLast(qualifier.Length).SequenceEqual(qualifier))
+                {
+                    continue;
+                }
+                foreach (var variable in field.Declaration.Variables.Where(item =>
+                             item.Identifier.Text == segments[^1] && item.Initializer is not null))
+                {
+                    var value = ConstantString(
+                        variable.Initializer!.Value,
+                        semanticModel.Compilation.GetSemanticModel(tree),
+                        depth + 1);
+                    if (value is not null)
+                    {
+                        return value;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static string[]? NameSegments(ExpressionSyntax expression) => expression switch
+    {
+        IdentifierNameSyntax identifier => [identifier.Identifier.Text],
+        MemberAccessExpressionSyntax member when NameSegments(member.Expression) is { } head =>
+            [.. head, member.Name.Identifier.Text],
+        _ => null
+    };
+
+    // ------------------------------------------------------------------
+    // MediatR command/handler flow behind an endpoint
+    // ------------------------------------------------------------------
+
+    private sealed record MediatorFlow(
+        INamedTypeSymbol Command,
+        INamedTypeSymbol? RequestModel,
+        INamedTypeSymbol? ResponseModel,
+        FlowRecord Record);
+
+    private static readonly HashSet<string> ResultPayloadTypes =
+    [
+        "OkObjectResult", "ObjectResult", "CreatedResult", "CreatedAtActionResult",
+        "CreatedAtRouteResult", "AcceptedResult"
+    ];
+
+    private static readonly HashSet<string> ResultHelpers = ["Ok", "Created", "CreatedAtAction", "Accepted"];
+
+    private static IEnumerable<INamedTypeSymbol> AllSourceTypes(Compilation compilation)
+    {
+        foreach (var type in AllTypes(compilation.Assembly.GlobalNamespace))
+        {
+            yield return type;
+        }
+        foreach (var reference in compilation.References.OfType<CompilationReference>())
+        {
+            if (compilation.GetAssemblyOrModuleSymbol(reference) is not IAssemblySymbol assembly)
+            {
+                continue;
+            }
+            foreach (var type in AllTypes(assembly.GlobalNamespace))
+            {
+                yield return type;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Follows `mediator.Send(new Command(...))` from an endpoint to the command's model,
+    /// its IRequestHandler, the payload the handler returns, and the mappers/backend clients it uses.
+    /// </summary>
+    private static MediatorFlow? TraceMediatorFlow(
+        MethodDeclarationSyntax method,
+        SemanticModel semanticModel,
+        Compilation compilation,
+        IReadOnlyList<INamedTypeSymbol> sourceTypes,
+        List<DiagnosticRecord> diagnostics)
+    {
+        INamedTypeSymbol? command = null;
+        foreach (var invocation in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var name = invocation.Expression switch
+            {
+                MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
+                IdentifierNameSyntax identifier => identifier.Identifier.Text,
+                _ => string.Empty
+            };
+            if (name != "Send" || invocation.ArgumentList.Arguments.Count == 0)
+            {
+                continue;
+            }
+            var candidate = SyntaxPayloadType(
+                invocation.ArgumentList.Arguments[0].Expression, method, semanticModel, compilation);
+            if (candidate is not null && IsProjectType(candidate))
+            {
+                command = candidate;
+                break;
+            }
+        }
+        if (command is null)
+        {
+            return null;
+        }
+
+        var requestModel = command.GetMembers().OfType<IPropertySymbol>()
+            .Where(property => !property.IsStatic)
+            .Select(property => PayloadType(property.Type))
+            .OfType<INamedTypeSymbol>()
+            .FirstOrDefault(type => IsProjectType(type) &&
+                type.TypeKind is Microsoft.CodeAnalysis.TypeKind.Class or Microsoft.CodeAnalysis.TypeKind.Struct &&
+                !SymbolEqualityComparer.Default.Equals(type, command));
+
+        var handler = sourceTypes
+            .Where(type => type.TypeKind == Microsoft.CodeAnalysis.TypeKind.Class &&
+                ImplementsHandler(type, command))
+            .OrderBy(type => FullName(type), StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (handler is null)
+        {
+            diagnostics.Add(new DiagnosticRecord(
+                "warning", "FLOW001", $"No IRequestHandler found for command {command.Name}."));
+            return new MediatorFlow(
+                command, requestModel, null,
+                new FlowRecord("mediator", FullName(command), null, [], [], Location(command)));
+        }
+
+        var declarations = handler.DeclaringSyntaxReferences
+            .Select(reference => reference.GetSyntax())
+            .OfType<TypeDeclarationSyntax>()
+            .ToArray();
+        var responseModel = declarations
+            .SelectMany(declaration => declaration.DescendantNodes())
+            .Select(node => HandlerPayload(node, sourceTypes))
+            .FirstOrDefault(type => type is not null);
+
+        var mappings = new List<MappingRecord>();
+        foreach (var generic in declarations.SelectMany(item => item.DescendantNodes())
+                     .OfType<GenericNameSyntax>()
+                     .Where(item => item.Identifier.Text == "GetMapper" &&
+                         item.TypeArgumentList.Arguments.Count == 2))
+        {
+            mappings.Add(new MappingRecord(
+                TypeName(generic.TypeArgumentList.Arguments[0], sourceTypes),
+                TypeName(generic.TypeArgumentList.Arguments[1], sourceTypes),
+                "GetMapper"));
+        }
+        var constructorParameters = declarations
+            .SelectMany(item => item.Members.OfType<ConstructorDeclarationSyntax>())
+            .SelectMany(item => item.ParameterList.Parameters)
+            .Where(parameter => parameter.Type is not null)
+            .ToArray();
+        foreach (var parameter in constructorParameters)
+        {
+            var injected = TypeByName(parameter.Type!, sourceTypes);
+            if (injected is null || injected.TypeKind != Microsoft.CodeAnalysis.TypeKind.Class)
+            {
+                continue;
+            }
+            var mapper = injected.AllInterfaces.FirstOrDefault(item =>
+                item.Name == "IMapper" && item.TypeArguments.Length == 2);
+            if (mapper is not null)
+            {
+                mappings.Add(new MappingRecord(
+                    Display(mapper.TypeArguments[0])!, Display(mapper.TypeArguments[1])!, injected.Name));
+                continue;
+            }
+            var map = injected.GetMembers("Map").OfType<IMethodSymbol>()
+                .FirstOrDefault(item => item.Parameters.Length > 0);
+            if (map is not null && PayloadType(map.ReturnType) is { } mapped &&
+                PayloadType(map.Parameters[0].Type) is { } source)
+            {
+                mappings.Add(new MappingRecord(Display(source)!, Display(mapped)!, injected.Name));
+            }
+        }
+
+        var backends = constructorParameters
+            .SelectMany(parameter => parameter.Type!.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+            .Select(name => name.Identifier.Text)
+            .Where(name => System.Text.RegularExpressions.Regex.IsMatch(name, @"Client(v\d+)?$"))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        return new MediatorFlow(
+            command,
+            requestModel,
+            responseModel,
+            new FlowRecord(
+                "mediator",
+                FullName(command),
+                FullName(handler),
+                mappings
+                    .DistinctBy(item => (item.From, item.To, item.Via))
+                    .OrderBy(item => item.Via, StringComparer.Ordinal)
+                    .ThenBy(item => item.From, StringComparer.Ordinal)
+                    .ThenBy(item => item.To, StringComparer.Ordinal)
+                    .ToArray(),
+                backends,
+                Location(handler)));
+    }
+
+    private static bool ImplementsHandler(INamedTypeSymbol type, INamedTypeSymbol command) =>
+        type.AllInterfaces.Any(item => item.Name == "IRequestHandler" &&
+            item.TypeArguments.Length > 0 &&
+            SymbolEqualityComparer.Default.Equals(item.TypeArguments[0], command)) ||
+        type.DeclaringSyntaxReferences.Select(reference => reference.GetSyntax())
+            .OfType<TypeDeclarationSyntax>()
+            .Any(declaration => declaration.BaseList?.Types.Any(baseType =>
+                baseType.Type.DescendantNodesAndSelf().OfType<GenericNameSyntax>().Any(generic =>
+                    generic.Identifier.Text == "IRequestHandler" &&
+                    generic.TypeArgumentList.Arguments.Count > 0 &&
+                    generic.TypeArgumentList.Arguments[0].DescendantNodesAndSelf()
+                        .OfType<SimpleNameSyntax>().LastOrDefault()?.Identifier.Text == command.Name)) == true);
+
+    /// <summary>Payload of `new OkObjectResult(x)` / `Ok(x)` style results, resolved syntactically.</summary>
+    private static INamedTypeSymbol? HandlerPayload(
+        SyntaxNode node,
+        IReadOnlyList<INamedTypeSymbol> sourceTypes)
+    {
+        ArgumentListSyntax? arguments = null;
+        if (node is ObjectCreationExpressionSyntax creation &&
+            creation.Type.DescendantNodesAndSelf().OfType<SimpleNameSyntax>().LastOrDefault()
+                ?.Identifier.Text is { } created && ResultPayloadTypes.Contains(created))
+        {
+            arguments = creation.ArgumentList;
+        }
+        else if (node is InvocationExpressionSyntax invocation)
+        {
+            var helper = invocation.Expression switch
+            {
+                IdentifierNameSyntax identifier => identifier.Identifier.Text,
+                MemberAccessExpressionSyntax member => member.Name.Identifier.Text,
+                _ => string.Empty
+            };
+            if (ResultHelpers.Contains(helper))
+            {
+                arguments = invocation.ArgumentList;
+            }
+        }
+        var payload = arguments?.Arguments.LastOrDefault()?.Expression;
+        return payload is null
+            ? null
+            : SyntaxExpressionType(
+                payload,
+                node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault(),
+                sourceTypes,
+                0);
+    }
+
+    private static INamedTypeSymbol? SyntaxExpressionType(
+        ExpressionSyntax expression,
+        MethodDeclarationSyntax? scope,
+        IReadOnlyList<INamedTypeSymbol> sourceTypes,
+        int depth)
+    {
+        if (depth > 4)
+        {
+            return null;
+        }
+        switch (expression)
+        {
+            case AwaitExpressionSyntax awaited:
+                return SyntaxExpressionType(awaited.Expression, scope, sourceTypes, depth + 1);
+            case ObjectCreationExpressionSyntax creation:
+                return TypeByName(creation.Type, sourceTypes);
+            case IdentifierNameSyntax identifier when scope is not null:
+                var parameter = scope.ParameterList.Parameters.FirstOrDefault(item =>
+                    item.Identifier.Text == identifier.Identifier.Text);
+                if (parameter?.Type is not null)
+                {
+                    return TypeByName(parameter.Type, sourceTypes);
+                }
+                var variable = scope.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+                    .FirstOrDefault(item => item.Identifier.Text == identifier.Identifier.Text);
+                if (variable?.Parent is VariableDeclarationSyntax declaration)
+                {
+                    return TypeByName(declaration.Type, sourceTypes) ??
+                        (variable.Initializer?.Value is { } value
+                            ? SyntaxExpressionType(value, scope, sourceTypes, depth + 1)
+                            : null);
+                }
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    private static INamedTypeSymbol? TypeByName(TypeSyntax type, IReadOnlyList<INamedTypeSymbol> sourceTypes)
+    {
+        var name = type.DescendantNodesAndSelf().OfType<SimpleNameSyntax>().LastOrDefault()?.Identifier.Text;
+        return name is null
+            ? null
+            : sourceTypes
+                .Where(item => item.Name == name &&
+                    item.TypeKind is Microsoft.CodeAnalysis.TypeKind.Class or Microsoft.CodeAnalysis.TypeKind.Struct)
+                .OrderBy(item => FullName(item), StringComparer.Ordinal)
+                .FirstOrDefault();
+    }
+
+    private static string TypeName(TypeSyntax type, IReadOnlyList<INamedTypeSymbol> sourceTypes) =>
+        TypeByName(type, sourceTypes) is { } resolved ? FullName(resolved) : type.ToString();
+
 }

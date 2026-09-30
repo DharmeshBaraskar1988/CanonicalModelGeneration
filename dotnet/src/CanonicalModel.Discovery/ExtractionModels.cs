@@ -30,6 +30,16 @@ public sealed record ParameterRecord(string Name, string Type, string Location, 
 
 public sealed record ResponseRecord(int StatusCode, string? Type);
 
+public sealed record MappingRecord(string From, string To, string Via);
+
+public sealed record FlowRecord(
+    string Kind,
+    string Command,
+    string? Handler,
+    IReadOnlyList<MappingRecord> Mappings,
+    IReadOnlyList<string> Backends,
+    LocationRecord Location);
+
 public sealed record OperationRecord(
     string Name,
     string Method,
@@ -37,7 +47,8 @@ public sealed record OperationRecord(
     string? RequestType,
     IReadOnlyList<ParameterRecord> Parameters,
     IReadOnlyList<ResponseRecord> Responses,
-    LocationRecord Location);
+    LocationRecord Location,
+    FlowRecord? Flow = null);
 
 public sealed record DiagnosticRecord(string Severity, string Code, string Message);
 
