@@ -50,7 +50,7 @@ artifacts when provider or evidence work fails.
 
 | File | Generated from | Purpose / consumer |
 | --- | --- | --- |
-| `enriched-openapi.yaml` | Discovery structure plus validated endpoint/entity/enum semantics | Self-contained OpenAPI contract; intended normal input for future Phase 3 ACORD alignment (Phase 3 is **not implemented**) |
+| `enriched-openapi.yaml` | Discovery structure plus validated endpoint/entity/enum semantics | Self-contained OpenAPI contract; normal regional input to the implemented ACORD Alignment Agent |
 | `semantic-metadata.json` | Typed provider results, investigations, retrieval stats | Inspect model classifications/descriptions, confidence, and investigation details |
 | `evidence-map.json` | Discovery lineage plus source contexts/results | Inspect which source evidence was considered for semantic targets |
 | `enrichment-report.json` | Independent coverage and validation checks, gaps, errors, confidence bands | Decide whether run is complete or partial and what needs review |
@@ -91,3 +91,5 @@ six full-run output files.
 
 Previous: [Discovery Agent state and artifacts](DISCOVERY_AGENT_STATE_AND_ARTIFACTS.md) and
 [Repository RAG state and artifacts](REPOSITORY_RAG_STATE_AND_ARTIFACTS.md).
+
+Next: [Alignment Agent state and artifacts](ALIGNMENT_AGENT_STATE_AND_ARTIFACTS.md).

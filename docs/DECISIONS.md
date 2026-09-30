@@ -944,6 +944,338 @@ modify Discovery, API Analyzer, Regional View, or ACORD ingestion artifacts.
 - This delivers a single-region canonical model but does not implement multi-region consolidation,
   enterprise version governance, adapter generation, or change-impact analysis.
 
+## ADR-040 - Version final canonical submissions in SQLite and publish OpenAPI
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-039
+
+### Context
+
+An approved ACORD alignment is still a mapping decision, not the final published model. Reviewers
+need to accept the whole model at once, retain a regional original when a standard choice is not
+appropriate, reject individual entities or fields, apply the same governance to domains and
+capabilities, and preserve every submission as a new version.
+
+### Decision
+
+Add a final review layer with three explicit actions per entity, attribute, domain, and capability:
+use the approved canonical value, keep the regional original, or reject the item from this version.
+Submit the complete reviewed inventory in one action. Append every submission to an ignored local
+SQLite registry without updating earlier rows. Store the reviewed artifact and generated OpenAPI
+3.0.3 JSON/YAML together. Build schemas and endpoint request/response references from the submitted
+model, retaining available descriptions, requiredness, constraints, domains, and capabilities.
+
+### Consequences
+
+- Repeated submissions create an auditable version sequence rather than overwriting prior models.
+- Rejected entities and attributes are absent only from that submitted version; source evidence and
+  approved alignment artifacts remain unchanged.
+- OpenAPI downloads are reproducible from the exact model snapshot stored in SQLite.
+- The registry is local application state under `.canonical/` and requires future migration work
+  before it is treated as a shared enterprise repository.
+
+## ADR-041 - Expand later regions from an immutable canonical baseline
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-039 and ADR-040
+
+### Context
+
+After ACORD plus the first regional catalog has been reviewed and submitted, repeating an
+ACORD-only comparison for every later region ignores already governed canonical decisions. A later
+region can also contain a concept that exists in neither the submitted baseline nor ACORD, in which
+case a reviewer needs controlled manual or model-assisted drafting without automatic acceptance.
+
+### Decision
+
+Allow ACORD Alignment to select an immutable submitted canonical version as the baseline for a
+later region. Compare each entity, attribute, domain, and capability with the baseline first. For
+every incomplete baseline match, compare the same regional item with the selected ACORD reference
+and retain the candidate, score, and provenance from both sources. Items still not matched after
+both comparisons remain explicit gaps.
+
+Let a reviewer resolve one true gap with manually entered name, description, type, and JSON
+constraints or explicitly invoke a text-only OpenAI Structured Output request containing only that
+item, its baseline/ACORD candidates, and reviewer instructions. Treat generated content only as a
+draft: the reviewer must select it, provide a reason, and approve the complete alignment. Merge an
+approved regional delta into a copy of the baseline, preserve source-region and mapping lineage,
+and route the consolidated artifact through the existing final review. Never update the selected
+baseline row; a subsequent canonical submission appends another SQLite version.
+
+### Consequences
+
+- The first region may still use ACORD-only alignment; later regions can reuse any governed
+  submitted version and default to the newest version in the UI.
+- A baseline full match is preferred, ACORD acts as the second-pass standard, and true gaps cannot
+  enter the model without explicit reviewer approval.
+- Generated names, descriptions, types, and constraints are review proposals, not source truth or
+  automatic canonical changes.
+- Earlier canonical versions remain reproducible, while approved later-region entities, fields,
+  endpoints, domains, and capabilities accumulate in a new consolidated artifact.
+- Shared registry concurrency, adapter generation, and change-impact analysis remain future work.
+
+## ADR-042 - Separate proposed and reviewed entity match status
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-039 and ADR-041
+
+### Context
+
+The flat entity and attribute tables exposed deterministic match results but did not provide the
+requested hierarchical entity review or an explicit reviewer-controlled match status. Replacing the
+computed status would discard evidence, while treating the radio selection as display-only would
+make the review decision unauditable.
+
+### Decision
+
+Present entity matches as an expandable Entity → Attributes tree. Show regional, canonical-baseline,
+and ACORD entity evidence in a comparison table and show the entity's attributes in a separate field
+table. For each entity and the selected attribute, provide a radio-button review status with exactly
+`Full match`, `Partial match`, and `Not matched`, plus a reviewed description, canonical resolution,
+and reviewer reason.
+
+Keep the deterministic status as `proposedStatus`/`proposedMatchStatus` and store the reviewer choice
+as the approved `status`/`matchStatus`. Require a reason whenever the reviewed status is not full,
+differs from the proposal, or uses a manual/generated resolution. Carry the reviewed description and
+reason into the canonical item and alignment ledger without changing the proposal score or source
+evidence.
+
+### Consequences
+
+- Entity-to-attribute structure and field evidence are visible without a wide combined edit table.
+- Reviewers can explicitly confirm or override classification while the original proposal remains
+  traceable.
+- Approved canonical descriptions can reflect the reviewed wording without mutating Regional View,
+  ACORD ingestion, canonical baseline versions, or deterministic match calculations.
+- Domain and capability review remains on its existing table workflow; this decision is limited to
+  entity and attribute results.
+
+## ADR-043 - Use one entity-to-attribute review tree
+
+- Date: 2026-09-29
+- Status: Accepted; supersedes the multiple-view presentation in ADR-042 while retaining its review-status semantics
+
+### Context
+
+ADR-042 initially displayed attribute evidence in a table and required a separate dropdown to open
+the selected attribute's controls. This showed the same attributes in multiple ways and did not feel
+like one coherent tree.
+
+### Decision
+
+Use one native Streamlit hierarchy for entity results. Each entity is an expandable parent node.
+Inside it, render every attribute exactly once as a bordered child node containing its regional,
+canonical-baseline, and ACORD evidence followed immediately by its status, description, canonical
+resolution, and reason controls. Remove the entity comparison table, attribute table, and attribute
+selection dropdown.
+
+Do not nest expanders because Streamlit explicitly advises against that layout. Use bordered child
+containers to represent the second tree level, and retain ADR-042's separate proposed and reviewed
+status fields and approval rules unchanged.
+
+### Consequences
+
+- Reviewers follow one Entity → Attribute path and never search for the same field in two UI forms.
+- Every attribute's evidence and controls are visible together when its entity is expanded.
+- Large entities produce longer pages, but the hierarchy remains predictable and avoids hidden
+  dropdown state or a custom component.
+- Domain and capability review remains unchanged.
+
+## ADR-044 - Require explicit approval on every entity and attribute node
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-042 and ADR-043
+
+### Context
+
+The single review tree exposed status, description, resolution, and reason controls, but approval was
+available only as a whole-model confirmation after the tree. Reviewers could not visibly confirm the
+entity or attribute they had just reviewed.
+
+### Decision
+
+Add an explicit approval checkbox to every entity and attribute node. Store approval in the review
+decision and reject final alignment approval until every entity and attribute has been explicitly
+approved. Compute a deterministic signature from the node's status, description, resolution,
+reason, and manual details; if any signed value changes, clear that node's approval. Display aggregate
+entity/attribute approval progress after the review tree.
+
+Retain the existing whole-model confirmation and final approval button. Domain and capability review
+continues to use its existing decision/reason validation and is not given a second per-row approval
+mechanism in this slice.
+
+### Consequences
+
+- Approval is visible at the point where each entity or attribute decision is made.
+- A previously approved node cannot silently remain approved after its decision changes.
+- The final canonical artifact still requires one complete, validated alignment submission.
+- Existing proposal scores, evidence, and approved artifact semantics remain unchanged.
+
+## ADR-045 - Use compact filtered nodes with confirmed batch approval
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-043 and ADR-044
+
+### Context
+
+Showing every attribute's evidence and controls directly inside its entity made large alignment
+reviews require excessive scrolling. Explicit per-node approval also made a fully reviewed tree
+laborious to approve one checkbox at a time, while the unresolved total did not distinguish approval
+work from missing or invalid decision data.
+
+### Decision
+
+Keep the entity expander as the tree parent and each attribute as its single child row, but move the
+node's evidence and decision controls into a native Streamlit Review popover. Apply the proposed
+status filter independently to both tree levels and retain an entity outside the filter only when it
+is needed as context for a matching attribute.
+
+Add a confirmed batch action for all entity and attribute nodes included by the active proposed-status
+filter. When a filtered node requires a reviewer reason and has none, apply the reviewer-entered bulk
+reason; never overwrite an existing node reason. Batch approval sets the same per-node approval state
+as the individual checkbox, so subsequent edits continue to clear approval. It does not fabricate
+manual canonical names, candidates, or valid constraints, and the whole-alignment confirmation and
+deterministic final validation remain mandatory. Report explicit-approval errors separately from
+missing or invalid decision details.
+
+### Consequences
+
+- Large Entity → Attribute trees stay scannable without introducing a table, dropdown, or duplicate
+  attribute view.
+- Reviewers can focus on Full, Partial, or Not-matched nodes and approve exactly that filtered set.
+- A batch action remains deliberate through a count-specific confirmation and a shared reason when
+  one is required.
+- Approval cannot conceal incomplete manual resolutions or other invalid decision data.
+
+## ADR-046 - Submit validated alignments directly as immutable canonical versions
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-040 and ADR-041
+
+### Context
+
+The ACORD Alignment primary action saved only an intermediate alignment JSON artifact. SQLite
+versioning happened later on the separate Canonical model page, so the action appeared not to work
+for an operator expecting an approved alignment to become canonical `v1`. Until that second step was
+performed, no submitted version existed for the Approved canonical baseline selector.
+
+### Decision
+
+After deterministic validation succeeds and the reviewer confirms the complete alignment, make the
+alignment primary action perform both persistence steps: save the approved alignment artifact and
+append its approved canonical snapshot to the SQLite registry using the default `Use canonical`
+final review. Display the next expected `vN` before submission and the actual committed version
+after submission. Every repeated valid submission appends a new immutable row; it never overwrites
+an earlier version.
+
+Load every submitted version into Approved canonical baseline and Version history, ordered newest
+first and labeled consistently as `v1`, `v2`, `v3`, and so on. Keep the separate Canonical model
+final-review workspace so a reviewer can still create a later version containing explicit
+keep-regional-original or reject actions.
+
+### Consequences
+
+- A successful alignment submission is immediately durable in SQLite and available as a baseline.
+- The button remains disabled when decision validation fails or whole-alignment confirmation is
+  missing, but the UI now explains the exact gate instead of appearing inert.
+- Direct submission accepts the already approved canonical choices; alternate keep/reject outcomes
+  remain an explicit optional review path.
+- Version numbers are database-assigned and immutable, so later submissions naturally produce
+  `v2`, `v3`, and subsequent versions without changing `v1`.
+
+## ADR-047 - Apply the compact node-review contract to domains and capabilities
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-042 through ADR-045 and supersedes their domain-table carve-outs
+
+### Context
+
+Entity and attribute alignment used a compact filtered tree with reviewed status and explicit
+approval, while Domain match results still used separate parent and child data editors. The two
+interaction models made domain evidence harder to inspect, required wide scrolling, and allowed
+domain/capability decisions without the same visible per-node approval used elsewhere.
+
+### Decision
+
+Use the shared native Streamlit hierarchy for both alignment families. A domain is an expandable
+parent node and every capability appears once as a bordered child row. Filter both levels by the
+deterministic proposed Full, Partial, or Not-matched status while retaining an out-of-filter parent
+only as context for a matching child. Put source evidence and the reviewed status, description,
+canonical resolution, reason, and manual fields in on-demand Review popovers.
+
+Initialize every domain and capability decision as unapproved. Require explicit approval at the
+same deterministic validation boundary as entities and attributes, reset approval whenever signed
+decision fields change, display separate Domain/Capability progress, and provide a confirmed bulk
+action for the filtered node set that fills only blank required reasons. Remove the former domain
+and capability data editors rather than retaining a duplicate representation.
+
+### Consequences
+
+- Entity → Attribute and Domain → Capability now use one predictable review interaction.
+- Canonical submission requires explicit approval for all four node kinds.
+- Large domain catalogs can be filtered and scanned without wide editable tables.
+- Proposed statuses, match scores, source evidence, and approved artifact semantics remain
+  unchanged.
+
+## ADR-048 - Never truncate blocking alignment validation feedback
+
+- Date: 2026-09-29
+- Status: Accepted
+
+### Context
+
+The approval workspace reported the complete unresolved count but displayed only the first ten
+messages. When 21 decisions were unresolved, reviewers could not identify or correct the remaining
+eleven blockers from the UI.
+
+### Decision
+
+Render every unresolved validation message. Separate explicit-approval blockers from missing or
+invalid decision details, state that the complete count is displayed, and place the full grouped
+list in a bordered fixed-height container with local scrolling so it does not lengthen the entire
+page excessively. Do not change validation or submission gates.
+
+### Consequences
+
+- Every reason preventing canonical submission is available to the reviewer.
+- Approval-only work is distinguishable from decisions requiring edited data.
+- Large error sets remain compact without hiding later items.
+
+## ADR-049 - Persist Alignment Agent execution and review drafts in SQLite
+
+- Date: 2026-09-29
+- Status: Accepted; extends ADR-039, ADR-041, and ADR-046
+
+### Context
+
+Alignment proposal generation previously ran as a direct deterministic function during every
+Streamlit rerun. It had no explicit agent boundary, durable execution checkpoint, bounded retry
+policy, or way to continue from the failed stage after a process restart. Review decisions also
+lived only in browser session state until final approval.
+
+### Decision
+
+Create a dedicated Python `alignment_agent/` package and orchestrate validation, baseline-first
+matching with ACORD fallback, proposal inventory validation, and review initialization with
+LangGraph. Address each run by a digest of all regional, ACORD, and baseline evidence. Persist graph
+checkpoints and mutable review drafts in the ignored local
+`.alignments/alignment-agent.sqlite3` database, using a serializer restricted to built-in types.
+
+Retry transient node failures at most three times. After exhaustion, preserve the latest checkpoint
+and let an operator resume the same LangGraph thread with no replacement input; completed nodes are
+not replayed. Keep deterministic matching and approval construction as services, and continue to
+require explicit human approval before writing an alignment artifact or immutable canonical version.
+
+### Consequences
+
+- Alignment execution survives Streamlit and process restarts without storing credentials.
+- A failed node can restart from the prior durable boundary with the exact same input evidence.
+- Reviewer drafts no longer depend solely on browser session state.
+- SQLite remains appropriate for the current local single-process workflow; shared multi-user
+  concurrency requires a future production persistence decision.
+- The orchestration change does not make model output authoritative or alter matching thresholds,
+  reviewer gates, source artifacts, or canonical version immutability.
+
 Copy this section for future decisions:
 
 ```markdown

@@ -8,6 +8,8 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from canonical_model_generator.llm_audit import usage_token_counts, write_llm_call_log
+
 LOCAL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 LOCAL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 OPENAI_MODELS = ("text-embedding-ada-002", "text-embedding-3-small", "text-embedding-3-large")
@@ -75,7 +77,7 @@ class OpenAIEmbedder:
         if not allow_source_sharing:
             raise ValueError("OpenAI embeddings require explicit source-sharing acknowledgement")
         if not api_key:
-            raise ValueError("Set OPENAI_API_KEY to use OpenAI embeddings")
+            raise ValueError("Configure the shared OpenAI API key to use OpenAI embeddings")
         from openai import OpenAI
 
         self.config = config
@@ -92,14 +94,56 @@ class OpenAIEmbedder:
                 model=self.config.model, input=texts, encoding_format="float"
             )
         except Exception as exc:
+            write_llm_call_log(
+                provider="openai",
+                operation="RepositoryEmbedding",
+                model=self.config.model,
+                status="failed",
+                input_tokens=None,
+                output_tokens=None,
+                total_tokens=None,
+                input_items=len(texts),
+                produced_result=False,
+                error=exc,
+            )
             status = getattr(exc, "status_code", None)
             raise RuntimeError(
                 f"OpenAI embeddings failed (HTTP {status or 'unavailable'}). "
                 "Check the key, model access and connection."
             ) from None
-        ordered = sorted(result.data, key=lambda item: item.index)
-        if [item.index for item in ordered] != list(range(len(texts))):
-            raise ValueError("Embedding provider returned incomplete results")
+        usage = getattr(result, "usage", None)
+        input_tokens, output_tokens, total_tokens = usage_token_counts(usage)
+        try:
+            ordered = sorted(result.data, key=lambda item: item.index)
+            if [item.index for item in ordered] != list(range(len(texts))):
+                raise ValueError("Embedding provider returned incomplete results")
+        except Exception as exc:
+            write_llm_call_log(
+                provider="openai",
+                operation="RepositoryEmbedding",
+                model=self.config.model,
+                status="failed",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                input_items=len(texts),
+                produced_result=False,
+                provider_request_id=getattr(result, "id", None),
+                error=exc,
+            )
+            raise
+        write_llm_call_log(
+            provider="openai",
+            operation="RepositoryEmbedding",
+            model=self.config.model,
+            status="completed",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            input_items=len(texts),
+            produced_result=True,
+            provider_request_id=getattr(result, "id", None),
+        )
         return [item.embedding for item in ordered]
 
 

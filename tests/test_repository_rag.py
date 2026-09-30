@@ -268,20 +268,23 @@ def test_free_text_code_interpretation_requires_citations(tmp_path, fake_embedde
         index.close()
 
 
-def test_openai_embedding_adapter_orders_results_and_redacts_errors(monkeypatch):
+def test_openai_embedding_adapter_orders_results_and_redacts_errors(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
     import openai
 
+    monkeypatch.setenv("LLM_CALL_LOG_DIRECTORY", str(tmp_path / "llm-logs"))
     requests = []
 
     def create(**kwargs):
         requests.append(kwargs)
         return SimpleNamespace(
+            id="embedding-request",
             data=[
                 SimpleNamespace(index=1, embedding=[0.0, 1.0]),
                 SimpleNamespace(index=0, embedding=[1.0, 0.0]),
-            ]
+            ],
+            usage=SimpleNamespace(prompt_tokens=8, total_tokens=8),
         )
 
     monkeypatch.setattr(
@@ -296,6 +299,13 @@ def test_openai_embedding_adapter_orders_results_and_redacts_errors(monkeypatch)
     )
     assert adapter.embed(["first", "second"]) == [[1.0, 0.0], [0.0, 1.0]]
     assert requests[0]["model"] == "text-embedding-ada-002"
+    completed_log = json.loads(next((tmp_path / "llm-logs").rglob("*.json")).read_text())
+    assert completed_log["operation"] == "RepositoryEmbedding"
+    assert completed_log["usage"] == {
+        "inputTokens": 8,
+        "outputTokens": 0,
+        "totalTokens": 8,
+    }
 
     def fail(**kwargs):
         raise RuntimeError("provider echoed a private credential")
@@ -304,6 +314,9 @@ def test_openai_embedding_adapter_orders_results_and_redacts_errors(monkeypatch)
     with pytest.raises(RuntimeError, match="OpenAI embeddings failed") as error:
         adapter.embed(["source"])
     assert "private credential" not in str(error.value)
+    logs = [json.loads(path.read_text()) for path in (tmp_path / "llm-logs").rglob("*.json")]
+    assert {record["status"] for record in logs} == {"completed", "failed"}
+    assert "private credential" not in json.dumps(logs)
 
 
 def test_outside_repository_links_are_not_read(tmp_path):

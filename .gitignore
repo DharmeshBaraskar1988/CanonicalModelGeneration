@@ -12,3 +12,5 @@ __pycache__/
 .applications/
 .acord/
 .alignments/
+.canonical/
+.llm-logs/

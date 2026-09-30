@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from canonical_model_generator.discovery_agent.model import DiscoveryModel
+from canonical_model_generator.openai_config import resolve_openai_api_key
 from canonical_model_generator.repository_rag.embeddings import (
     LOCAL_MODEL,
     EmbeddingConfig,
@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
             location = args.index
         adapter = create_embedder(
             config,
-            api_key=os.getenv("OPENAI_API_KEY"),
+            api_key=resolve_openai_api_key(),
             allow_source_sharing=args.allow_source_sharing,
         )
         index = ChromaRepositoryIndex(location, adapter)

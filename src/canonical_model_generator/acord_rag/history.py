@@ -73,3 +73,21 @@ def load_acord_records(root: Path) -> dict[str, dict[str, Any]]:
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             continue
     return records
+
+
+def delete_acord_record(root: Path, run_id: str) -> bool:
+    """Delete one ACORD ingestion run directory and its index from disk."""
+    if not RUN_ID_PATTERN.fullmatch(run_id):
+        raise ValueError("ACORD run ID must be a UUID hex value")
+    resolved_root = root.resolve()
+    run_path = (resolved_root / run_id).resolve()
+    try:
+        run_path.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError("ACORD run path is outside the configured history root") from exc
+    if not run_path.exists():
+        return False
+    import shutil
+
+    shutil.rmtree(run_path)
+    return True

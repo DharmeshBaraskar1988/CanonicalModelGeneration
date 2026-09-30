@@ -28,6 +28,12 @@ flowchart LR
     AC --> AX[(Independent local\nACORD Chroma index)]
     AO --> U
     AX --> U
+    O --> AL[Alignment Agent\nLangGraph + deterministic matching]
+    AO --> AL
+    AL --> CK[(SQLite checkpoints\nand review drafts)]
+    AL --> HR[Explicit human review\nand approval]
+    HR --> CM[(Immutable canonical\nSQLite versions)]
+    CK -->|resume failed node| AL
 ```
 
 Discovery remains authoritative for routes, methods, parameters, request/response contracts,
@@ -36,8 +42,10 @@ elements, but it cannot add, remove, or rename structural elements.
 
 ACORD ingestion is independent from the regional application flow. Its parser, artifacts, saved
 history, chunks, and Chroma index are separate from repository Discovery/RAG. It uses deterministic
-OpenAPI parsing plus local embeddings and makes no LLM call. ACORD-to-regional alignment remains
-outside the implemented boundary.
+OpenAPI parsing plus local embeddings and makes no LLM call. The Alignment Agent consumes the
+regional catalog plus an accepted ACORD ingestion, optionally compares an immutable canonical
+baseline first, and uses ACORD as fallback. Its LangGraph execution and review drafts are durable
+in local SQLite; every proposed decision still requires explicit human approval.
 
 ## Data flow into the LLM
 
@@ -91,6 +99,11 @@ The optional OpenAI embedding mode is a separate action. When selected, all incl
 chunks are sent for embedding only after its own explicit consent. The default Sentence Transformer
 embedding path remains local.
 
+The Alignment Agent itself makes no LLM call for matching. A reviewer may separately request one
+schema-validated OpenAI draft for a true unmatched item. That call receives only the selected
+regional item, its baseline/ACORD candidates, and reviewer instructions; its result cannot enter a
+canonical version until explicitly selected, reasoned, and approved.
+
 ## Credit and token guardrails
 
 The API Analyzer enforces these controls before and after each paid semantic request:
@@ -110,6 +123,12 @@ The API Analyzer enforces these controls before and after each paid semantic req
    result view does not display the internal usage ledger.
 9. Existing provider preflight, bounded SDK retries, structured-output validation, and explicit
    partial-result reporting remain active.
+
+In addition, every OpenAI Responses API, canonical-gap, and embedding invocation writes a separate
+secret-safe JSON record under `.llm-logs/YYYY-MM-DD/` (or `LLM_CALL_LOG_DIRECTORY`). Completed logs
+contain provider-reported input/output/total token counts; failed-call logs retain null token counts
+when the provider did not return usage. These files contain no prompts, source text, model output,
+API key, or raw provider error message.
 
 These are token ceilings, not currency estimates. Actual cost depends on the selected model's
 current pricing; using token limits avoids embedding volatile price tables in the application.

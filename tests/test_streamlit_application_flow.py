@@ -12,17 +12,22 @@ from streamlit.testing.v1 import AppTest
 
 import canonical_model_generator.acord_rag as acord_rag
 import canonical_model_generator.api_analyzer as api_analyzer
+import canonical_model_generator.openai_config as openai_config
 from canonical_model_generator.acord_rag import (
     build_acord_chunks,
     generate_acord_artifacts,
     parse_acord_document,
 )
 from canonical_model_generator.acord_rag import history as acord_history
+from canonical_model_generator.alignment_agent import save_alignment_artifact
 from canonical_model_generator.discovery_agent.model import DiscoveryModel
 from canonical_model_generator.repository_rag.embeddings import EmbeddingConfig
 
 
-def test_acord_alignment_renders_entity_domain_and_approval_workspaces() -> None:
+def test_acord_alignment_renders_entity_domain_and_approval_workspaces(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALIGNMENT_AGENT_DATABASE", str(tmp_path / "alignment-agent.sqlite3"))
     discovery = Path("tests/fixtures/discovery-model.valid.json").read_bytes()
     specification = Path("fixtures/RegionalQuoteApi/openapi/quote-api.yaml").read_bytes()
     acord_model = parse_acord_document(
@@ -81,14 +86,77 @@ def test_acord_alignment_renders_entity_domain_and_approval_workspaces() -> None
     app.run()
 
     assert not app.exception
-    assert any(item.value == "ACORD alignment" for item in app.header)
-    assert any(item.label == "Matched coverage" for item in app.metric)
+    assert any(item.label == "Regional catalog" for item in app.selectbox)
     tab_labels = [tab.label for tab in app.tabs]
     assert "Regional entities and attributes" in tab_labels
     assert "Domains and capabilities" in tab_labels
-    assert any(
-        button.label == "Approve alignment and generate canonical model" for button in app.button
+    assert any(item.label == "Entity review status" for item in app.radio)
+    assert any(item.label == "Attribute review status" for item in app.radio)
+    assert any(item.label == "Domain review status" for item in app.radio)
+    assert any(item.label == "Capability review status" for item in app.radio)
+    assert any(item.label == "Approve this entity match" for item in app.checkbox)
+    assert any(item.label == "Approve this attribute match" for item in app.checkbox)
+    assert any(item.label == "Approve this domain match" for item in app.checkbox)
+    assert any(item.label == "Approve this capability match" for item in app.checkbox)
+    assert not any(item.label == "Attribute to review" for item in app.selectbox)
+    assert any("**applicantName**" in item.value for item in app.markdown)
+    assert any(item.label == "Entity description" for item in app.text_area)
+    assert any(item.label == "Entity reviewer reason" for item in app.text_area)
+    assert any(item.label == "Filter entity tree nodes by proposed status" for item in app.pills)
+    assert any(item.label == "Filter domain tree nodes by proposed status" for item in app.pills)
+    assert any(item.label.startswith("Bulk entity reviewer reason") for item in app.text_area)
+    assert any(item.label.startswith("Bulk domain reviewer reason") for item in app.text_area)
+    assert any(button.label == "Approve all filtered entity nodes" for button in app.button)
+    assert any(button.label == "Approve all filtered domain nodes" for button in app.button)
+    assert any("entity/attribute nodes" in item.label for item in app.checkbox)
+    assert any("domain/capability nodes" in item.label for item in app.checkbox)
+    unresolved_message = next(
+        item.value for item in app.error if "review decision(s) remain unresolved" in item.value
     )
+    unresolved_count = int(unresolved_message.split()[0])
+    assert any(
+        item.value == f"Showing all {unresolved_count} unresolved decisions below."
+        for item in app.caption
+    )
+    assert any("Awaiting explicit approval" in item.value for item in app.markdown)
+    assert any(
+        ("item(s) to fix" in item.value or "Other missing or invalid details" in item.value)
+        for item in app.markdown
+    )
+
+    bulk_reason = next(
+        item for item in app.text_area if item.label.startswith("Bulk entity reviewer reason")
+    )
+    bulk_confirmation = next(
+        item for item in app.checkbox if "entity/attribute nodes" in item.label
+    )
+    bulk_reason.set_value("Reviewed together against the accepted ACORD reference.")
+    bulk_confirmation.set_value(True)
+    app.run()
+    next(
+        button for button in app.button if button.label == "Approve all filtered entity nodes"
+    ).click().run()
+    assert not app.exception
+    assert all(item.value for item in app.checkbox if item.label == "Approve this entity match")
+    assert all(item.value for item in app.checkbox if item.label == "Approve this attribute match")
+
+    domain_reason = next(
+        item for item in app.text_area if item.label.startswith("Bulk domain reviewer reason")
+    )
+    domain_confirmation = next(
+        item for item in app.checkbox if "domain/capability nodes" in item.label
+    )
+    domain_reason.set_value("Reviewed domain and capability matches together.")
+    domain_confirmation.set_value(True)
+    app.run()
+    next(
+        button for button in app.button if button.label == "Approve all filtered domain nodes"
+    ).click().run()
+    assert not app.exception
+    assert any("Approved" in item.value for item in app.success)
+    assert all(item.value for item in app.checkbox if item.label == "Approve this domain match")
+    assert all(item.value for item in app.checkbox if item.label == "Approve this capability match")
+    assert any(button.label == "Submit and save canonical v1" for button in app.button)
 
 
 def test_phase_two_selects_the_matching_region_repository_and_discovery_artifact(
@@ -198,6 +266,8 @@ def test_phase_two_selects_the_matching_region_repository_and_discovery_artifact
 
     monkeypatch.setattr(api_analyzer, "OpenAISemanticProvider", FakeProvider)
     monkeypatch.setattr(api_analyzer, "run_api_analyzer_agent", fake_agent)
+    monkeypatch.setattr(openai_config, "resolve_openai_api_key", lambda **_: None)
+    monkeypatch.setattr(openai_config, "resolve_openai_model", lambda **_: "env-model")
     app = AppTest.from_file(
         str(Path(__file__).resolve().parents[1] / "streamlit_app.py"), default_timeout=120
     )
@@ -217,7 +287,7 @@ def test_phase_two_selects_the_matching_region_repository_and_discovery_artifact
     removed_acord_tabs = {
         ":material/library_books: ACORD ingestion",
         ":material/compare_arrows: ACORD alignment",
-        ":material/hub: Canonical view",
+        ":material/hub: Canonical model",
     }
     assert [tab.label for tab in app.tabs[:4]] == expected_crawler_tabs
     assert not removed_acord_tabs.intersection(tab.label for tab in app.tabs)
@@ -232,18 +302,24 @@ def test_phase_two_selects_the_matching_region_repository_and_discovery_artifact
     assert acord_menu.options == [
         "ACORD ingestion",
         "ACORD alignment",
-        "Canonical view",
+        "Canonical model",
     ]
-    assert any(item.value == "Crawler code" for item in app.caption)
-    assert any(item.value == "ACORD view" for item in app.caption)
+    with pytest.raises(KeyError):
+        app.text_input(key="openai_api_key_override")
+    with pytest.raises(KeyError):
+        app.text_input(key="phase_2_openai_model")
+    with pytest.raises(KeyError):
+        app.text_input(key="phase_2_key_override")
+    with pytest.raises(KeyError):
+        app.text_input(key="regional_review_key")
     assert app.file_uploader(key="acord_document").label == "ACORD OpenAPI document"
     assert app.checkbox(key="acord_usage_authorized").label.startswith("I confirm")
     assert any(button.label == "Build ACORD RAG index" for button in app.button)
     acord_menu.set_value(":material/compare_arrows: ACORD alignment").run()
     assert app.session_state["workflow_tabs"] == ":material/compare_arrows: ACORD alignment"
     acord_menu = next(pills for pills in app.pills if pills.key == "acord_sidebar_menu")
-    acord_menu.set_value(":material/hub: Canonical view").run()
-    assert app.session_state["workflow_tabs"] == ":material/hub: Canonical view"
+    acord_menu.set_value(":material/hub: Canonical model").run()
+    assert app.session_state["workflow_tabs"] == ":material/hub: Canonical model"
     assert any("No canonical model is approved yet" in item.value for item in app.info)
     crawler_menu = next(pills for pills in app.pills if pills.key == "crawler_sidebar_menu")
     crawler_menu.set_value(":material/search: 2 Repository RAG").run()
@@ -263,8 +339,9 @@ def test_phase_two_selects_the_matching_region_repository_and_discovery_artifact
     app.selectbox(key="phase2_application_first").set_value("second").run()
     assert not app.exception
     assert app.session_state["active_application_id"] == "second"
-    app.text_input(key="phase_2_key_override").set_value("session-test-key").run()
+    monkeypatch.setattr(openai_config, "resolve_openai_api_key", lambda **_: "env-test-key")
     app.checkbox(key="phase_2_source_consent").check().run()
+    assert any("OpenAI model from .env: env-model" in item.value for item in app.caption)
     assert not app.exception
     assert not app.button(key="run_phase_2_semantic_openapi").disabled
     app.button(key="run_phase_2_semantic_openapi").click().run(timeout=120)
@@ -324,14 +401,113 @@ def test_acord_yaml_upload_survives_input_reruns_and_reaches_ingestion(tmp_path,
     )
     app.run()
     app.file_uploader(key="acord_document").upload("quote-api.yaml", spec, "application/yaml").run()
-    assert any("Selected specification: quote-api.yaml" in item.value for item in app.caption)
+    assert any("Specification selected: **quote-api.yaml**" in item.value for item in app.success)
 
     app.text_input(key="acord_reference_label").set_value("ACORD quote API").run()
     app.text_input(key="acord_reference_version").set_value("2026.1").run()
     app.checkbox(key="acord_usage_authorized").check().run()
-    assert any("Selected specification: quote-api.yaml" in item.value for item in app.caption)
+    assert any("Specification selected: **quote-api.yaml**" in item.value for item in app.success)
 
     app.button(key="build_acord_rag_index").click().run(timeout=120)
     assert not app.exception
     assert not any("Required input missing" in item.value for item in app.error)
     assert app.session_state["active_acord_id"] in app.session_state["acord_runs"]
+    assert any(item.value == "ACORD download gallery" for item in app.subheader)
+    assert any(
+        button.key and button.key.startswith("download_acord_")
+        for button in app.download_button
+        if button.label == "Download JSON"
+    )
+
+
+def test_discovery_artifacts_render_in_right_side_download_gallery() -> None:
+    labels = [
+        "API Catalog",
+        "Data Model",
+        "Relationship Graph",
+        "Validation and enums",
+        "Lineage",
+    ]
+    artifacts = {label: b"{}" for label in labels}
+    app = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "streamlit_app.py"), default_timeout=120
+    )
+    app.session_state["application_runs"] = {
+        "discovery": {
+            "profile": {
+                "region": "EU",
+                "application": "Quote API",
+                "repository": "quote.zip",
+                "openapi": "quote-api.yaml",
+            },
+            "discovery_artifacts": artifacts,
+            "discovery_projects": ["src/QuoteApi/QuoteApi.csproj"],
+            "discovery_model": Path("tests/fixtures/discovery-model.valid.json").read_bytes(),
+            "repository_archive": None,
+            "rag_store_path": None,
+            "rag_manifest": None,
+            "phase_2_artifacts": {},
+        }
+    }
+    app.session_state["active_application_id"] = "discovery"
+    app.session_state["discovery_artifacts"] = artifacts
+    app.session_state["discovery_projects"] = ["src/QuoteApi/QuoteApi.csproj"]
+
+    app.run()
+
+    assert not app.exception
+    assert any(item.value == "Discovery download gallery" for item in app.subheader)
+    assert (
+        len(
+            [
+                button
+                for button in app.download_button
+                if button.key and button.key.startswith("download_discovery_")
+            ]
+        )
+        == 6
+    )
+
+
+def test_saved_acord_alignment_can_be_deleted_without_canonical_versions(
+    tmp_path, monkeypatch
+) -> None:
+    alignment_id = "d" * 32
+    artifact = {
+        "status": "Approved",
+        "region": "EU",
+        "acordReference": {"referenceLabel": "ACORD Quote", "referenceVersion": "2026.1"},
+        "summary": {
+            "canonicalEntities": 0,
+            "canonicalAttributes": 0,
+            "canonicalDomains": 0,
+            "canonicalCapabilities": 0,
+            "canonicalEndpoints": 0,
+        },
+        "canonicalModel": {"entities": []},
+        "canonicalEndpoints": [],
+        "alignmentMappings": [],
+    }
+    history_root = tmp_path / "alignments"
+    save_alignment_artifact(history_root, alignment_id, artifact)
+    monkeypatch.setenv("ALIGNMENT_HISTORY_ROOT", str(history_root))
+    monkeypatch.setenv("ALIGNMENT_AGENT_DATABASE", str(tmp_path / "alignment-agent.sqlite3"))
+    app = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "streamlit_app.py"), default_timeout=120
+    )
+    app.session_state["alignment_reviews"] = {alignment_id: artifact}
+    app.session_state["active_alignment_id"] = alignment_id
+    app.session_state["workflow_tabs"] = ":material/hub: Canonical model"
+
+    app.run()
+    app.button(key=f"request_delete_alignment_{alignment_id}").click().run()
+
+    assert any("Submitted canonical versions" in item.value for item in app.warning)
+    confirmation = app.checkbox(key=f"confirm_delete_alignment_{alignment_id}")
+    confirmation.check().run()
+    app.button(key=f"delete_alignment_{alignment_id}").click().run()
+
+    assert not app.exception
+    assert not (history_root / alignment_id).exists()
+    assert app.session_state["alignment_reviews"] == {}
+    assert any("Submitted canonical versions were retained" in item.value for item in app.success)

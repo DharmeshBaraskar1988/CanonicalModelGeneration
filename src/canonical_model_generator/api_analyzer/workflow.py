@@ -489,8 +489,8 @@ def _provider_error_message(exc: Exception, model_name: str) -> str:
     error_name = type(exc).__name__
     if error_name == "AuthenticationError":
         return (
-            "OpenAI authentication failed (401 invalid_api_key). Replace OPENAI_API_KEY in .env "
-            "with an active API key, restart Streamlit, and run the agent again."
+            "OpenAI authentication failed (401 invalid_api_key). Set an active "
+            "OPENAI_API_KEY in the project .env file, then run the agent again."
         )
     if error_name == "PermissionDeniedError":
         return "OpenAI access was denied. Check the API project's permissions and model access."

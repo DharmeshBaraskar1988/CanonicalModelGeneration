@@ -1,0 +1,2883 @@
+{
+  "deduplicationRule": "Entities merge by reviewer-approved name; attributes merge within that entity by reviewer-approved name and source type. Source artifacts are unchanged.",
+  "entities": [
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "This field can store the street address, which may include city, state, and zip code.",
+          "id": "regional-attribute-62ac46cd2fb59cad3ea9",
+          "name": "address",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "This is applicable primarily to residential properties.",
+          "id": "regional-attribute-f3fbeeb3b961d3a8703a",
+          "name": "bathrooms",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "int??"
+        },
+        {
+          "description": "This is generally applicable to residential properties, indicating how many bedrooms the property has.",
+          "id": "regional-attribute-304a41f08f70e204a7ef",
+          "name": "bedrooms",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "int??"
+        },
+        {
+          "description": "This field may hold the name of a person or entity that would benefit from the asset.",
+          "id": "regional-attribute-0b41e004f32fb7405ee0",
+          "name": "beneficiary",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "Indicates the monetary coverage amount provided for the asset under insurance or similar agreements.",
+          "id": "regional-attribute-265a8fcf82ade58112ab",
+          "name": "coverageAmount",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "decimal??"
+        },
+        {
+          "description": "This denotes the date and time when the asset record was created in the system.",
+          "id": "regional-attribute-067582b0e28c3826b6f1",
+          "name": "createdAt",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "DateTime"
+        },
+        {
+          "description": "Applicable mostly for life insurance policies or benefits, indicating the individual's date of birth.",
+          "id": "regional-attribute-c66f7a48979007437929",
+          "name": "dateOfBirth",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "DateTime??"
+        },
+        {
+          "description": "This field typically holds a textual description providing details about the asset.",
+          "id": "regional-attribute-43d8b2c26832439be2e0",
+          "name": "description",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "This is a GUID that uniquely identifies the asset within the system.",
+          "id": "regional-attribute-21d4911cfa50fdb027b4",
+          "name": "id",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "Guid"
+        },
+        {
+          "description": "This may include the name of the landlord for properties that are rented.",
+          "id": "regional-attribute-85a8cf694134fc468883",
+          "name": "landlordName",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "This field captures the license plate information for vehicles associated with the asset.",
+          "id": "regional-attribute-76a36cca94b820e767ff",
+          "name": "licensePlate",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "Typically the name or designation given to the asset, such as a vehicle model or property name.",
+          "id": "regional-attribute-d9642706d784b54f033b",
+          "name": "name",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "This field is applicable to vehicles and records the odometer reading.",
+          "id": "regional-attribute-d96850b29aaeecc5363e",
+          "name": "odometer",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "int??"
+        },
+        {
+          "description": "A measurement specific to properties detailing the area within the asset.",
+          "id": "regional-attribute-8835664e1cb3180e5139",
+          "name": "squareFeet",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "int??"
+        },
+        {
+          "description": "Indicates the classification of the asset, such as Car, House, Boat, etc.",
+          "id": "regional-attribute-3794dee730ff346dbb3f",
+          "name": "type",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "This is relevant for units in a multi-unit property or structure.",
+          "id": "regional-attribute-a833c7c490c5b3c984f2",
+          "name": "unitNumber",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "This designates the user who owns or is responsible for the asset.",
+          "id": "regional-attribute-f1c87552a632b7305266",
+          "name": "userId",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "int"
+        },
+        {
+          "description": "This can contain a list of policies that the user has related to the asset.",
+          "id": "regional-attribute-aa957994897f79f1c5f2",
+          "name": "userPolicies",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "List<InsurancePortal.API.Models.UserPolicy>??"
+        },
+        {
+          "description": "This pertains to vehicles, capturing manufacturer information.",
+          "id": "regional-attribute-4c46302114ee5e30bee5",
+          "name": "vehicleMake",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "This captures the specific model designation of the vehicle.",
+          "id": "regional-attribute-63bbec4e8cc0947d3bb0",
+          "name": "vehicleModel",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "This attribute captures the manufacturing year of the vehicle.",
+          "id": "regional-attribute-28d51a387bcde5d59bc0",
+          "name": "vehicleYear",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "int??"
+        },
+        {
+          "description": "This is specific to vehicles and identifies each vehicle uniquely.",
+          "id": "regional-attribute-b587feee22565c812833",
+          "name": "vIN",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "Applicable to real estate assets, signifying the year the structure was built.",
+          "id": "regional-attribute-687d746c7befda904be1",
+          "name": "yearBuilt",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "int??"
+        }
+      ],
+      "description": "The Asset entity contains attributes that describe characteristics and details about specific assets.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "Create",
+          "Method": "POST",
+          "Route": "/api/Assets",
+          "Usage": "Request"
+        }
+      ],
+      "id": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "name": "Asset",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "The email is used as a unique identifier and for communication purposes.",
+          "id": "regional-attribute-c8febd05492f1fda6786",
+          "name": "email",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "Role defines the permissions and level of access for this user's account.",
+          "id": "regional-attribute-37d7b48b1a3f5158f389",
+          "name": "role",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "The token is issued after successful authentication to manage user sessions securely.",
+          "id": "regional-attribute-cb04d061a585e2d81e32",
+          "name": "token",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "Username is used as a public identifier for the user within the application.",
+          "id": "regional-attribute-07c2736c4043d9683990",
+          "name": "username",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        }
+      ],
+      "description": "This entity represents the response from the authentication process, including user credentials and roles.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "Login",
+          "Method": "POST",
+          "Route": "/api/Auth/login",
+          "Usage": "Response 200"
+        },
+        {
+          "API": "insurance",
+          "Endpoint": "Register",
+          "Method": "POST",
+          "Route": "/api/Auth/register",
+          "Usage": "Response 200"
+        }
+      ],
+      "id": "regional-entity-e5e37580798fc98b7842",
+      "name": "AuthResponseDto",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "This field captures the timestamp when the beneficiary entity is created, represented in DateTime format.",
+          "id": "regional-attribute-9aad6efcd2baf4ee19d9",
+          "name": "createdAt",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "DateTime"
+        },
+        {
+          "description": "This is a UUID (Guid) that uniquely identifies the beneficiary within the system.",
+          "id": "regional-attribute-63d26a440ac28a2c4779",
+          "name": "id",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "Guid"
+        },
+        {
+          "description": "This field contains the full name of the beneficiary, stored as a string.",
+          "id": "regional-attribute-f0b8e03c8d0789b2ef88",
+          "name": "name",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "This represents an optional field that indicates the percentage of the total benefit allocated to the beneficiary, stored as a decimal value.",
+          "id": "regional-attribute-83a43bbfc2a85d640cef",
+          "name": "percentage",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "decimal??"
+        },
+        {
+          "description": "An optional field that captures the relationship type of the beneficiary to the user, allows null values.",
+          "id": "regional-attribute-e22ac6143e635c574e88",
+          "name": "relationship",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "A required integer field representing the ID of the user to whom this beneficiary is linked.",
+          "id": "regional-attribute-8e6a877c738160746196",
+          "name": "userId",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "int"
+        }
+      ],
+      "description": "Holds information such as beneficiary's ID, user ID, name, relationship, creation date, and percentage involvement.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "Create",
+          "Method": "POST",
+          "Route": "/api/Beneficiaries",
+          "Usage": "Request"
+        }
+      ],
+      "id": "regional-entity-fadead11a0f7e7ca8a44",
+      "name": "Beneficiary",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "Represents the filing date of the claim. This is a required field of type DateTime, which cannot be null. It indicates when the claim request was officially submitted.",
+          "id": "regional-attribute-d44ebf29874b5c955e44",
+          "name": "dateFiled",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "DateTime"
+        },
+        {
+          "description": "This string attribute holds a description of the claim being filed. It is required and must not be null, providing critical context for assessing the claim.",
+          "id": "regional-attribute-32844089ebc925629173",
+          "name": "description",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "This integer field serves as the primary identifier for the claim entity. It is a required field and uniquely distinguishes each claim in the system.",
+          "id": "regional-attribute-4570a717e69ad64e5a33",
+          "name": "id",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "int"
+        },
+        {
+          "description": "This attribute is a required string that holds the policy number related to the claim. It must not be null, as it links the claim to the specific insurance policy.",
+          "id": "regional-attribute-c354909919fa4aaf272c",
+          "name": "policyNumber",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        }
+      ],
+      "description": "This class encapsulates the essential data needed for claim operations, including policy details and filing information.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "SubmitClaim",
+          "Method": "POST",
+          "Route": "/api/Claims",
+          "Usage": "Request"
+        }
+      ],
+      "id": "regional-entity-660d6dcde2fca5a8d77d",
+      "name": "ClaimDto",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "Field to store the customer's address, which may be absent (nullable).",
+          "id": "regional-attribute-d564ad19c391ad84bd87",
+          "name": "address",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "Field to store the date of birth, which can be nullable if not provided.",
+          "id": "regional-attribute-36a63fe28427037aad79",
+          "name": "dob",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "DateTime??"
+        },
+        {
+          "description": "Email must be provided and is used for communication.",
+          "id": "regional-attribute-2174ec7ac3225a51361a",
+          "name": "email",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "The first name must be provided and is part of the customer\u2019s identification.",
+          "id": "regional-attribute-90118f91864c0b43e172",
+          "name": "firstName",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "The ID is a required field that uniquely identifies a customer in the system.",
+          "id": "regional-attribute-e565892ac16f1a216bde",
+          "name": "id",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "Guid"
+        },
+        {
+          "description": "The last name must be provided and is part of customer identification.",
+          "id": "regional-attribute-776937c6fe4da7f70c91",
+          "name": "lastName",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "Phone can be provided but is not mandatory and may be absent.",
+          "id": "regional-attribute-fe03c123796894e827f8",
+          "name": "phone",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "Must be provided as it links to the user's account in the authentication context.",
+          "id": "regional-attribute-9a71466a40c05efb483e",
+          "name": "userId",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        }
+      ],
+      "description": "This entity provides a structured representation of a customer's profile, crucial for managing customer relationships and interactions in insurance.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "GetProfile",
+          "Method": "GET",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Response 200"
+        },
+        {
+          "API": "insurance",
+          "Endpoint": "CreateProfile",
+          "Method": "POST",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Request"
+        },
+        {
+          "API": "insurance",
+          "Endpoint": "CreateProfile",
+          "Method": "POST",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Response 200"
+        },
+        {
+          "API": "insurance",
+          "Endpoint": "UpdateProfile",
+          "Method": "PUT",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Request"
+        }
+      ],
+      "id": "regional-entity-3886c00fabb0f8ba109f",
+      "name": "CustomerProfile",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "The date and time the insurance claim was submitted.",
+          "id": "regional-attribute-3dc17e31ac42c6796fc0",
+          "name": "dateFiled",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "DateTime"
+        },
+        {
+          "description": "A textual summary providing information about the nature of the claim.",
+          "id": "regional-attribute-269553d2c456aaa86116",
+          "name": "description",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "An integer that serves as a unique identifier for each insurance claim.",
+          "id": "regional-attribute-35607381dd783c12a79c",
+          "name": "id",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "int"
+        },
+        {
+          "description": "The policy number under which the claim is filed.",
+          "id": "regional-attribute-bae2069686e166fc4caa",
+          "name": "policyNumber",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "Identifier for the user who filed the claim.",
+          "id": "regional-attribute-e25c9d399c4bc01c53b3",
+          "name": "userId",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        }
+      ],
+      "description": "InsuranceClaim includes various attributes that detail the claim information, such as the filing date, description, policy number, user identifier, and a unique identifier for the claim itself.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "GetAllClaims",
+          "Method": "GET",
+          "Route": "/api/Claims",
+          "Usage": "Response 200"
+        },
+        {
+          "API": "insurance",
+          "Endpoint": "GetClaimById",
+          "Method": "GET",
+          "Route": "/api/Claims/{id}",
+          "Usage": "Response 200"
+        },
+        {
+          "API": "insurance",
+          "Endpoint": "SubmitClaim",
+          "Method": "POST",
+          "Route": "/api/Claims",
+          "Usage": "Response 200"
+        }
+      ],
+      "id": "regional-entity-b0de0a157a2d7bbc1b8b",
+      "name": "InsuranceClaim",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "The password that corresponds to the given username, must be kept secure.",
+          "id": "regional-attribute-326147b750a8ef5e71c0",
+          "name": "password",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "The username that the user will enter to authenticate.",
+          "id": "regional-attribute-45ba398c021ea6195631",
+          "name": "username",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        }
+      ],
+      "description": "Represents the credentials required for a user to log into the system, including a username and password.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "Login",
+          "Method": "POST",
+          "Route": "/api/Auth/login",
+          "Usage": "Request"
+        }
+      ],
+      "id": "regional-entity-19ee7d75c9f3042fbc22",
+      "name": "LoginDto",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "A unique email address is required for account validation and communication. It must be a valid string and is a required field.",
+          "id": "regional-attribute-a993ba0da87b6dfbc1de",
+          "name": "email",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "A critical component for securing user accounts, the password must meet certain security criteria and is a required field.",
+          "id": "regional-attribute-16799e287bb95e9dd102",
+          "name": "password",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        },
+        {
+          "description": "A unique identifier for the user, typically used as a login credential. It is a required field and must be a non-null string.",
+          "id": "regional-attribute-d04e49a7246b1753558c",
+          "name": "username",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "string"
+        }
+      ],
+      "description": "The RegisterDto is used to encapsulate user registration details such as email, password, and username, which are required for creating a new user account.",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "Register",
+          "Method": "POST",
+          "Route": "/api/Auth/register",
+          "Usage": "Request"
+        }
+      ],
+      "id": "regional-entity-5deb0da278d841406ee4",
+      "name": "RegisterDto",
+      "sourceEntityCount": 1
+    },
+    {
+      "apis": [
+        "insurance"
+      ],
+      "attributes": [
+        {
+          "description": "Awaiting API Analyzer",
+          "id": "regional-attribute-a15d3fcd847ddd8df0a0",
+          "name": "date",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "DateOnly"
+        },
+        {
+          "description": "Awaiting API Analyzer",
+          "id": "regional-attribute-5bdf228dcd53bf0f62e4",
+          "name": "summary",
+          "requiredInAllSources": false,
+          "sourceCount": 1,
+          "type": "string??"
+        },
+        {
+          "description": "Awaiting API Analyzer",
+          "id": "regional-attribute-912435142b3217b1c217",
+          "name": "temperatureC",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "int"
+        },
+        {
+          "description": "Awaiting API Analyzer",
+          "id": "regional-attribute-e807bbd29e7a6d26c617",
+          "name": "temperatureF",
+          "requiredInAllSources": true,
+          "sourceCount": 1,
+          "type": "int"
+        }
+      ],
+      "description": "Awaiting API Analyzer",
+      "duplicateEntityCount": 0,
+      "endpoints": [
+        {
+          "API": "insurance",
+          "Endpoint": "Get",
+          "Method": "GET",
+          "Route": "/WeatherForecast/GetWeatherForecast",
+          "Usage": "Response 200"
+        }
+      ],
+      "id": "regional-entity-48e569c5b82ab0b88d0a",
+      "name": "WeatherForecast",
+      "sourceEntityCount": 1
+    }
+  ],
+  "region": "EU",
+  "removedDuplicates": [],
+  "sourceReviews": [
+    {
+      "api": "insurance",
+      "approvedDescription": "The Asset entity contains attributes that describe characteristics and details about specific assets.",
+      "approvedName": "Asset",
+      "attributes": [
+        {
+          "approvedDescription": "This field can store the street address, which may include city, state, and zip code.",
+          "approvedName": "address",
+          "comment": "",
+          "originalName": "address",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-8284cfc89d41b0f7dd5c",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "This is applicable primarily to residential properties.",
+          "approvedName": "bathrooms",
+          "comment": "",
+          "originalName": "bathrooms",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-1da249daaf9b47e1efc4",
+          "type": "int??"
+        },
+        {
+          "approvedDescription": "This is generally applicable to residential properties, indicating how many bedrooms the property has.",
+          "approvedName": "bedrooms",
+          "comment": "",
+          "originalName": "bedrooms",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-51959b296869fb622d02",
+          "type": "int??"
+        },
+        {
+          "approvedDescription": "This field may hold the name of a person or entity that would benefit from the asset.",
+          "approvedName": "beneficiary",
+          "comment": "",
+          "originalName": "beneficiary",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-cd7e6f50fe58a54d8d95",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "Indicates the monetary coverage amount provided for the asset under insurance or similar agreements.",
+          "approvedName": "coverageAmount",
+          "comment": "",
+          "originalName": "coverageAmount",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-e2bfc0c34f8de2c6d962",
+          "type": "decimal??"
+        },
+        {
+          "approvedDescription": "This denotes the date and time when the asset record was created in the system.",
+          "approvedName": "createdAt",
+          "comment": "",
+          "originalName": "createdAt",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-8fc1ce20e0cdf5b8e7c2",
+          "type": "DateTime"
+        },
+        {
+          "approvedDescription": "Applicable mostly for life insurance policies or benefits, indicating the individual's date of birth.",
+          "approvedName": "dateOfBirth",
+          "comment": "",
+          "originalName": "dateOfBirth",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-59dfe19e87441c895cb4",
+          "type": "DateTime??"
+        },
+        {
+          "approvedDescription": "This field typically holds a textual description providing details about the asset.",
+          "approvedName": "description",
+          "comment": "",
+          "originalName": "description",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-85d129d2a2e83d7eef28",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "This is a GUID that uniquely identifies the asset within the system.",
+          "approvedName": "id",
+          "comment": "",
+          "originalName": "id",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-8981dc93abef1a8a4a98",
+          "type": "Guid"
+        },
+        {
+          "approvedDescription": "This may include the name of the landlord for properties that are rented.",
+          "approvedName": "landlordName",
+          "comment": "",
+          "originalName": "landlordName",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-b5f046198f611de42104",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "This field captures the license plate information for vehicles associated with the asset.",
+          "approvedName": "licensePlate",
+          "comment": "",
+          "originalName": "licensePlate",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-801a20103cc25e4d098f",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "Typically the name or designation given to the asset, such as a vehicle model or property name.",
+          "approvedName": "name",
+          "comment": "",
+          "originalName": "name",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-20331f419c8e0b2cc4ac",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "This field is applicable to vehicles and records the odometer reading.",
+          "approvedName": "odometer",
+          "comment": "",
+          "originalName": "odometer",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-6a789be1aa0812b34a4b",
+          "type": "int??"
+        },
+        {
+          "approvedDescription": "A measurement specific to properties detailing the area within the asset.",
+          "approvedName": "squareFeet",
+          "comment": "",
+          "originalName": "squareFeet",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-9acb2624aaf61cbeacba",
+          "type": "int??"
+        },
+        {
+          "approvedDescription": "Indicates the classification of the asset, such as Car, House, Boat, etc.",
+          "approvedName": "type",
+          "comment": "",
+          "originalName": "type",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-216f974d5b746e352430",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "This is relevant for units in a multi-unit property or structure.",
+          "approvedName": "unitNumber",
+          "comment": "",
+          "originalName": "unitNumber",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-f5903fddba5fa7fe7cf0",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "This designates the user who owns or is responsible for the asset.",
+          "approvedName": "userId",
+          "comment": "",
+          "originalName": "userId",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-fa0e93e2c0d37aec5089",
+          "type": "int"
+        },
+        {
+          "approvedDescription": "This can contain a list of policies that the user has related to the asset.",
+          "approvedName": "userPolicies",
+          "comment": "",
+          "originalName": "userPolicies",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-886747e1f3aa0439e5e3",
+          "type": "List<InsurancePortal.API.Models.UserPolicy>??"
+        },
+        {
+          "approvedDescription": "This pertains to vehicles, capturing manufacturer information.",
+          "approvedName": "vehicleMake",
+          "comment": "",
+          "originalName": "vehicleMake",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-85033cdd214aabdc3905",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "This captures the specific model designation of the vehicle.",
+          "approvedName": "vehicleModel",
+          "comment": "",
+          "originalName": "vehicleModel",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-2a323f3f4609f2b43fc3",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "This attribute captures the manufacturing year of the vehicle.",
+          "approvedName": "vehicleYear",
+          "comment": "",
+          "originalName": "vehicleYear",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-e40c4e3effae79361002",
+          "type": "int??"
+        },
+        {
+          "approvedDescription": "This is specific to vehicles and identifies each vehicle uniquely.",
+          "approvedName": "vIN",
+          "comment": "",
+          "originalName": "vIN",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-6564ff3e2f4437c9bea1",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "Applicable to real estate assets, signifying the year the structure was built.",
+          "approvedName": "yearBuilt",
+          "comment": "",
+          "originalName": "yearBuilt",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-85e66c67ea45418c224b",
+          "type": "int??"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "Create",
+          "Method": "POST",
+          "Route": "/api/Assets",
+          "Usage": "Request"
+        }
+      ],
+      "originalName": "Asset",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "This entity represents the response from the authentication process, including user credentials and roles.",
+      "approvedName": "AuthResponseDto",
+      "attributes": [
+        {
+          "approvedDescription": "The email is used as a unique identifier and for communication purposes.",
+          "approvedName": "email",
+          "comment": "",
+          "originalName": "email",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-27fd47882d497f38c2fc",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "Role defines the permissions and level of access for this user's account.",
+          "approvedName": "role",
+          "comment": "",
+          "originalName": "role",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-d573021b37c12043a410",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "The token is issued after successful authentication to manage user sessions securely.",
+          "approvedName": "token",
+          "comment": "",
+          "originalName": "token",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-8f27d15155fd09d4807a",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "Username is used as a public identifier for the user within the application.",
+          "approvedName": "username",
+          "comment": "",
+          "originalName": "username",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-1c323f75f7ab7989e023",
+          "type": "string"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "Login",
+          "Method": "POST",
+          "Route": "/api/Auth/login",
+          "Usage": "Response 200"
+        },
+        {
+          "Endpoint": "Register",
+          "Method": "POST",
+          "Route": "/api/Auth/register",
+          "Usage": "Response 200"
+        }
+      ],
+      "originalName": "AuthResponseDto",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-72a84fb5325cf9dcb01b",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-72a84fb5325cf9dcb01b"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "Holds information such as beneficiary's ID, user ID, name, relationship, creation date, and percentage involvement.",
+      "approvedName": "Beneficiary",
+      "attributes": [
+        {
+          "approvedDescription": "This field captures the timestamp when the beneficiary entity is created, represented in DateTime format.",
+          "approvedName": "createdAt",
+          "comment": "",
+          "originalName": "createdAt",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-6e0c54a51f06f1db5bda",
+          "type": "DateTime"
+        },
+        {
+          "approvedDescription": "This is a UUID (Guid) that uniquely identifies the beneficiary within the system.",
+          "approvedName": "id",
+          "comment": "",
+          "originalName": "id",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-e545cf3ef7ee45aaa4a8",
+          "type": "Guid"
+        },
+        {
+          "approvedDescription": "This field contains the full name of the beneficiary, stored as a string.",
+          "approvedName": "name",
+          "comment": "",
+          "originalName": "name",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-efbad664c08de7dfa8f3",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "This represents an optional field that indicates the percentage of the total benefit allocated to the beneficiary, stored as a decimal value.",
+          "approvedName": "percentage",
+          "comment": "",
+          "originalName": "percentage",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-699306441bed1252ff3e",
+          "type": "decimal??"
+        },
+        {
+          "approvedDescription": "An optional field that captures the relationship type of the beneficiary to the user, allows null values.",
+          "approvedName": "relationship",
+          "comment": "",
+          "originalName": "relationship",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-398428eae150a7a40211",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "A required integer field representing the ID of the user to whom this beneficiary is linked.",
+          "approvedName": "userId",
+          "comment": "",
+          "originalName": "userId",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-373ca5b1a5c2016c43b3",
+          "type": "int"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "Create",
+          "Method": "POST",
+          "Route": "/api/Beneficiaries",
+          "Usage": "Request"
+        }
+      ],
+      "originalName": "Beneficiary",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-b6702de858c2217082a7",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-b6702de858c2217082a7"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "This class encapsulates the essential data needed for claim operations, including policy details and filing information.",
+      "approvedName": "ClaimDto",
+      "attributes": [
+        {
+          "approvedDescription": "Represents the filing date of the claim. This is a required field of type DateTime, which cannot be null. It indicates when the claim request was officially submitted.",
+          "approvedName": "dateFiled",
+          "comment": "",
+          "originalName": "dateFiled",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-9fe00612e5ee6fc8fcce",
+          "type": "DateTime"
+        },
+        {
+          "approvedDescription": "This string attribute holds a description of the claim being filed. It is required and must not be null, providing critical context for assessing the claim.",
+          "approvedName": "description",
+          "comment": "",
+          "originalName": "description",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-84316a0c1743c11689db",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "This integer field serves as the primary identifier for the claim entity. It is a required field and uniquely distinguishes each claim in the system.",
+          "approvedName": "id",
+          "comment": "",
+          "originalName": "id",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-b0f71783e2a999c83f2a",
+          "type": "int"
+        },
+        {
+          "approvedDescription": "This attribute is a required string that holds the policy number related to the claim. It must not be null, as it links the claim to the specific insurance policy.",
+          "approvedName": "policyNumber",
+          "comment": "",
+          "originalName": "policyNumber",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-e1f670bfd9c0f0e51687",
+          "type": "string"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "SubmitClaim",
+          "Method": "POST",
+          "Route": "/api/Claims",
+          "Usage": "Request"
+        }
+      ],
+      "originalName": "ClaimDto",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-54dc5003bc2c8052f920",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-54dc5003bc2c8052f920"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "This entity provides a structured representation of a customer's profile, crucial for managing customer relationships and interactions in insurance.",
+      "approvedName": "CustomerProfile",
+      "attributes": [
+        {
+          "approvedDescription": "Field to store the customer's address, which may be absent (nullable).",
+          "approvedName": "address",
+          "comment": "",
+          "originalName": "address",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-1f12007cdffd94f7d209",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "Field to store the date of birth, which can be nullable if not provided.",
+          "approvedName": "dob",
+          "comment": "",
+          "originalName": "dob",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-c29f2b5457cebe1b519b",
+          "type": "DateTime??"
+        },
+        {
+          "approvedDescription": "Email must be provided and is used for communication.",
+          "approvedName": "email",
+          "comment": "",
+          "originalName": "email",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-1013c5bcf1a817214b89",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "The first name must be provided and is part of the customer\u2019s identification.",
+          "approvedName": "firstName",
+          "comment": "",
+          "originalName": "firstName",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-783207c312bd59d6ba5c",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "The ID is a required field that uniquely identifies a customer in the system.",
+          "approvedName": "id",
+          "comment": "",
+          "originalName": "id",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-75fc4eea253eeb5b1f7c",
+          "type": "Guid"
+        },
+        {
+          "approvedDescription": "The last name must be provided and is part of customer identification.",
+          "approvedName": "lastName",
+          "comment": "",
+          "originalName": "lastName",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-4aeafa6144deff41a72e",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "Phone can be provided but is not mandatory and may be absent.",
+          "approvedName": "phone",
+          "comment": "",
+          "originalName": "phone",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-3bf965a6ea2614056b38",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "Must be provided as it links to the user's account in the authentication context.",
+          "approvedName": "userId",
+          "comment": "",
+          "originalName": "userId",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-0daadba5705d04ebb093",
+          "type": "string"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "GetProfile",
+          "Method": "GET",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Response 200"
+        },
+        {
+          "Endpoint": "CreateProfile",
+          "Method": "POST",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Request"
+        },
+        {
+          "Endpoint": "CreateProfile",
+          "Method": "POST",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Response 200"
+        },
+        {
+          "Endpoint": "UpdateProfile",
+          "Method": "PUT",
+          "Route": "/api/CustomerProfile",
+          "Usage": "Request"
+        }
+      ],
+      "originalName": "CustomerProfile",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-a3141178649442a7915f",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-a3141178649442a7915f"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "InsuranceClaim includes various attributes that detail the claim information, such as the filing date, description, policy number, user identifier, and a unique identifier for the claim itself.",
+      "approvedName": "InsuranceClaim",
+      "attributes": [
+        {
+          "approvedDescription": "The date and time the insurance claim was submitted.",
+          "approvedName": "dateFiled",
+          "comment": "",
+          "originalName": "dateFiled",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-ff4cfe6aecade5acbb3c",
+          "type": "DateTime"
+        },
+        {
+          "approvedDescription": "A textual summary providing information about the nature of the claim.",
+          "approvedName": "description",
+          "comment": "",
+          "originalName": "description",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-76fee6ebddbf96fac0ff",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "An integer that serves as a unique identifier for each insurance claim.",
+          "approvedName": "id",
+          "comment": "",
+          "originalName": "id",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-14cab70c96e3dfae53aa",
+          "type": "int"
+        },
+        {
+          "approvedDescription": "The policy number under which the claim is filed.",
+          "approvedName": "policyNumber",
+          "comment": "",
+          "originalName": "policyNumber",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-929e6fe13b24ee170a01",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "Identifier for the user who filed the claim.",
+          "approvedName": "userId",
+          "comment": "",
+          "originalName": "userId",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-fe6ec724659415eef6ae",
+          "type": "string"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "GetAllClaims",
+          "Method": "GET",
+          "Route": "/api/Claims",
+          "Usage": "Response 200"
+        },
+        {
+          "Endpoint": "SubmitClaim",
+          "Method": "POST",
+          "Route": "/api/Claims",
+          "Usage": "Response 200"
+        },
+        {
+          "Endpoint": "GetClaimById",
+          "Method": "GET",
+          "Route": "/api/Claims/{id}",
+          "Usage": "Response 200"
+        }
+      ],
+      "originalName": "InsuranceClaim",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-b470cf0a0a7aa1d59e3d",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-b470cf0a0a7aa1d59e3d"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "Represents the credentials required for a user to log into the system, including a username and password.",
+      "approvedName": "LoginDto",
+      "attributes": [
+        {
+          "approvedDescription": "The password that corresponds to the given username, must be kept secure.",
+          "approvedName": "password",
+          "comment": "",
+          "originalName": "password",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-205034e3fd8f1f754782",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "The username that the user will enter to authenticate.",
+          "approvedName": "username",
+          "comment": "",
+          "originalName": "username",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-acf09e3590cf97785d53",
+          "type": "string"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "Login",
+          "Method": "POST",
+          "Route": "/api/Auth/login",
+          "Usage": "Request"
+        }
+      ],
+      "originalName": "LoginDto",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-3878047cbeb0f83a61f3",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-3878047cbeb0f83a61f3"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "The RegisterDto is used to encapsulate user registration details such as email, password, and username, which are required for creating a new user account.",
+      "approvedName": "RegisterDto",
+      "attributes": [
+        {
+          "approvedDescription": "A unique email address is required for account validation and communication. It must be a valid string and is a required field.",
+          "approvedName": "email",
+          "comment": "",
+          "originalName": "email",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-d7f543ff9724608d96ec",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "A critical component for securing user accounts, the password must meet certain security criteria and is a required field.",
+          "approvedName": "password",
+          "comment": "",
+          "originalName": "password",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-6638f656696df1cb5105",
+          "type": "string"
+        },
+        {
+          "approvedDescription": "A unique identifier for the user, typically used as a login credential. It is a required field and must be a non-null string.",
+          "approvedName": "username",
+          "comment": "",
+          "originalName": "username",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-eed74aaaff2bca5a4861",
+          "type": "string"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "Register",
+          "Method": "POST",
+          "Route": "/api/Auth/register",
+          "Usage": "Request"
+        }
+      ],
+      "originalName": "RegisterDto",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-8e8cf423afe37ae5dca7",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-8e8cf423afe37ae5dca7"
+    },
+    {
+      "api": "insurance",
+      "approvedDescription": "Awaiting API Analyzer",
+      "approvedName": "WeatherForecast",
+      "attributes": [
+        {
+          "approvedDescription": "Awaiting API Analyzer",
+          "approvedName": "date",
+          "comment": "",
+          "originalName": "date",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-96d83b14207c5c423f0b",
+          "type": "DateOnly"
+        },
+        {
+          "approvedDescription": "Awaiting API Analyzer",
+          "approvedName": "summary",
+          "comment": "",
+          "originalName": "summary",
+          "required": false,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-ae464152ca28f5637460",
+          "type": "string??"
+        },
+        {
+          "approvedDescription": "Awaiting API Analyzer",
+          "approvedName": "temperatureC",
+          "comment": "",
+          "originalName": "temperatureC",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-457f5f58d834a509d6dd",
+          "type": "int"
+        },
+        {
+          "approvedDescription": "Awaiting API Analyzer",
+          "approvedName": "temperatureF",
+          "comment": "",
+          "originalName": "temperatureF",
+          "required": true,
+          "selection": "Original",
+          "sourceAttributeId": "attribute-47b2ba96c0374e61e87f",
+          "type": "int"
+        }
+      ],
+      "comment": "",
+      "endpoints": [
+        {
+          "Endpoint": "Get",
+          "Method": "GET",
+          "Route": "/WeatherForecast/GetWeatherForecast",
+          "Usage": "Response 200"
+        }
+      ],
+      "originalName": "WeatherForecast",
+      "repository": "InsurancePortal-main.zip",
+      "runId": "7ef8f4cbe7fc45c594cc29db4f23a611",
+      "selection": "Original",
+      "sourceEntityId": "entity-5297aa6f107f67badc55",
+      "sourceKey": "7ef8f4cbe7fc45c594cc29db4f23a611:entity-5297aa6f107f67badc55"
+    }
+  ],
+  "status": "Approved",
+  "summary": {
+    "mergedDuplicateEntities": 0,
+    "regionalAttributes": 59,
+    "regionalEntities": 9,
+    "sourceAttributes": 59,
+    "sourceEntities": 9
+  },
+  "truthMappings": [
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "address",
+      "regionalAttributeId": "regional-attribute-62ac46cd2fb59cad3ea9",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "address",
+      "sourceAttributeId": "attribute-8284cfc89d41b0f7dd5c",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "bathrooms",
+      "regionalAttributeId": "regional-attribute-f3fbeeb3b961d3a8703a",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "bathrooms",
+      "sourceAttributeId": "attribute-1da249daaf9b47e1efc4",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "bedrooms",
+      "regionalAttributeId": "regional-attribute-304a41f08f70e204a7ef",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "bedrooms",
+      "sourceAttributeId": "attribute-51959b296869fb622d02",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "beneficiary",
+      "regionalAttributeId": "regional-attribute-0b41e004f32fb7405ee0",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "beneficiary",
+      "sourceAttributeId": "attribute-cd7e6f50fe58a54d8d95",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "coverageAmount",
+      "regionalAttributeId": "regional-attribute-265a8fcf82ade58112ab",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "coverageAmount",
+      "sourceAttributeId": "attribute-e2bfc0c34f8de2c6d962",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "createdAt",
+      "regionalAttributeId": "regional-attribute-067582b0e28c3826b6f1",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "createdAt",
+      "sourceAttributeId": "attribute-8fc1ce20e0cdf5b8e7c2",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "dateOfBirth",
+      "regionalAttributeId": "regional-attribute-c66f7a48979007437929",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "dateOfBirth",
+      "sourceAttributeId": "attribute-59dfe19e87441c895cb4",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "description",
+      "regionalAttributeId": "regional-attribute-43d8b2c26832439be2e0",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "description",
+      "sourceAttributeId": "attribute-85d129d2a2e83d7eef28",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "id",
+      "regionalAttributeId": "regional-attribute-21d4911cfa50fdb027b4",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "id",
+      "sourceAttributeId": "attribute-8981dc93abef1a8a4a98",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "landlordName",
+      "regionalAttributeId": "regional-attribute-85a8cf694134fc468883",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "landlordName",
+      "sourceAttributeId": "attribute-b5f046198f611de42104",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "licensePlate",
+      "regionalAttributeId": "regional-attribute-76a36cca94b820e767ff",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "licensePlate",
+      "sourceAttributeId": "attribute-801a20103cc25e4d098f",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "name",
+      "regionalAttributeId": "regional-attribute-d9642706d784b54f033b",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "name",
+      "sourceAttributeId": "attribute-20331f419c8e0b2cc4ac",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "odometer",
+      "regionalAttributeId": "regional-attribute-d96850b29aaeecc5363e",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "odometer",
+      "sourceAttributeId": "attribute-6a789be1aa0812b34a4b",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "squareFeet",
+      "regionalAttributeId": "regional-attribute-8835664e1cb3180e5139",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "squareFeet",
+      "sourceAttributeId": "attribute-9acb2624aaf61cbeacba",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "type",
+      "regionalAttributeId": "regional-attribute-3794dee730ff346dbb3f",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "type",
+      "sourceAttributeId": "attribute-216f974d5b746e352430",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "unitNumber",
+      "regionalAttributeId": "regional-attribute-a833c7c490c5b3c984f2",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "unitNumber",
+      "sourceAttributeId": "attribute-f5903fddba5fa7fe7cf0",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "userId",
+      "regionalAttributeId": "regional-attribute-f1c87552a632b7305266",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "userId",
+      "sourceAttributeId": "attribute-fa0e93e2c0d37aec5089",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "userPolicies",
+      "regionalAttributeId": "regional-attribute-aa957994897f79f1c5f2",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "userPolicies",
+      "sourceAttributeId": "attribute-886747e1f3aa0439e5e3",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "vehicleMake",
+      "regionalAttributeId": "regional-attribute-4c46302114ee5e30bee5",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "vehicleMake",
+      "sourceAttributeId": "attribute-85033cdd214aabdc3905",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "vehicleModel",
+      "regionalAttributeId": "regional-attribute-63bbec4e8cc0947d3bb0",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "vehicleModel",
+      "sourceAttributeId": "attribute-2a323f3f4609f2b43fc3",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "vehicleYear",
+      "regionalAttributeId": "regional-attribute-28d51a387bcde5d59bc0",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "vehicleYear",
+      "sourceAttributeId": "attribute-e40c4e3effae79361002",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "vIN",
+      "regionalAttributeId": "regional-attribute-b587feee22565c812833",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "vIN",
+      "sourceAttributeId": "attribute-6564ff3e2f4437c9bea1",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Assets (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "yearBuilt",
+      "regionalAttributeId": "regional-attribute-687d746c7befda904be1",
+      "regionalEntity": "Asset",
+      "regionalEntityId": "regional-entity-fc230a7a6b51fd1d4dfa",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "yearBuilt",
+      "sourceAttributeId": "attribute-85e66c67ea45418c224b",
+      "sourceEntity": "Asset",
+      "sourceEntityId": "entity-0f5c5918beae1dba1c56"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Response 200)",
+        "insurance Register \u00b7 POST /api/Auth/register (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "AuthResponseDto",
+      "regionalEntityId": "regional-entity-e5e37580798fc98b7842",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "AuthResponseDto",
+      "sourceEntityId": "entity-72a84fb5325cf9dcb01b"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Response 200)",
+        "insurance Register \u00b7 POST /api/Auth/register (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "email",
+      "regionalAttributeId": "regional-attribute-c8febd05492f1fda6786",
+      "regionalEntity": "AuthResponseDto",
+      "regionalEntityId": "regional-entity-e5e37580798fc98b7842",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "email",
+      "sourceAttributeId": "attribute-27fd47882d497f38c2fc",
+      "sourceEntity": "AuthResponseDto",
+      "sourceEntityId": "entity-72a84fb5325cf9dcb01b"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Response 200)",
+        "insurance Register \u00b7 POST /api/Auth/register (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "role",
+      "regionalAttributeId": "regional-attribute-37d7b48b1a3f5158f389",
+      "regionalEntity": "AuthResponseDto",
+      "regionalEntityId": "regional-entity-e5e37580798fc98b7842",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "role",
+      "sourceAttributeId": "attribute-d573021b37c12043a410",
+      "sourceEntity": "AuthResponseDto",
+      "sourceEntityId": "entity-72a84fb5325cf9dcb01b"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Response 200)",
+        "insurance Register \u00b7 POST /api/Auth/register (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "token",
+      "regionalAttributeId": "regional-attribute-cb04d061a585e2d81e32",
+      "regionalEntity": "AuthResponseDto",
+      "regionalEntityId": "regional-entity-e5e37580798fc98b7842",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "token",
+      "sourceAttributeId": "attribute-8f27d15155fd09d4807a",
+      "sourceEntity": "AuthResponseDto",
+      "sourceEntityId": "entity-72a84fb5325cf9dcb01b"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Response 200)",
+        "insurance Register \u00b7 POST /api/Auth/register (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "username",
+      "regionalAttributeId": "regional-attribute-07c2736c4043d9683990",
+      "regionalEntity": "AuthResponseDto",
+      "regionalEntityId": "regional-entity-e5e37580798fc98b7842",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "username",
+      "sourceAttributeId": "attribute-1c323f75f7ab7989e023",
+      "sourceEntity": "AuthResponseDto",
+      "sourceEntityId": "entity-72a84fb5325cf9dcb01b"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Beneficiaries (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "Beneficiary",
+      "regionalEntityId": "regional-entity-fadead11a0f7e7ca8a44",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "Beneficiary",
+      "sourceEntityId": "entity-b6702de858c2217082a7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Beneficiaries (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "createdAt",
+      "regionalAttributeId": "regional-attribute-9aad6efcd2baf4ee19d9",
+      "regionalEntity": "Beneficiary",
+      "regionalEntityId": "regional-entity-fadead11a0f7e7ca8a44",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "createdAt",
+      "sourceAttributeId": "attribute-6e0c54a51f06f1db5bda",
+      "sourceEntity": "Beneficiary",
+      "sourceEntityId": "entity-b6702de858c2217082a7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Beneficiaries (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "id",
+      "regionalAttributeId": "regional-attribute-63d26a440ac28a2c4779",
+      "regionalEntity": "Beneficiary",
+      "regionalEntityId": "regional-entity-fadead11a0f7e7ca8a44",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "id",
+      "sourceAttributeId": "attribute-e545cf3ef7ee45aaa4a8",
+      "sourceEntity": "Beneficiary",
+      "sourceEntityId": "entity-b6702de858c2217082a7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Beneficiaries (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "name",
+      "regionalAttributeId": "regional-attribute-f0b8e03c8d0789b2ef88",
+      "regionalEntity": "Beneficiary",
+      "regionalEntityId": "regional-entity-fadead11a0f7e7ca8a44",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "name",
+      "sourceAttributeId": "attribute-efbad664c08de7dfa8f3",
+      "sourceEntity": "Beneficiary",
+      "sourceEntityId": "entity-b6702de858c2217082a7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Beneficiaries (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "percentage",
+      "regionalAttributeId": "regional-attribute-83a43bbfc2a85d640cef",
+      "regionalEntity": "Beneficiary",
+      "regionalEntityId": "regional-entity-fadead11a0f7e7ca8a44",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "percentage",
+      "sourceAttributeId": "attribute-699306441bed1252ff3e",
+      "sourceEntity": "Beneficiary",
+      "sourceEntityId": "entity-b6702de858c2217082a7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Beneficiaries (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "relationship",
+      "regionalAttributeId": "regional-attribute-e22ac6143e635c574e88",
+      "regionalEntity": "Beneficiary",
+      "regionalEntityId": "regional-entity-fadead11a0f7e7ca8a44",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "relationship",
+      "sourceAttributeId": "attribute-398428eae150a7a40211",
+      "sourceEntity": "Beneficiary",
+      "sourceEntityId": "entity-b6702de858c2217082a7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Create \u00b7 POST /api/Beneficiaries (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "userId",
+      "regionalAttributeId": "regional-attribute-8e6a877c738160746196",
+      "regionalEntity": "Beneficiary",
+      "regionalEntityId": "regional-entity-fadead11a0f7e7ca8a44",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "userId",
+      "sourceAttributeId": "attribute-373ca5b1a5c2016c43b3",
+      "sourceEntity": "Beneficiary",
+      "sourceEntityId": "entity-b6702de858c2217082a7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "ClaimDto",
+      "regionalEntityId": "regional-entity-660d6dcde2fca5a8d77d",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "ClaimDto",
+      "sourceEntityId": "entity-54dc5003bc2c8052f920"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "dateFiled",
+      "regionalAttributeId": "regional-attribute-d44ebf29874b5c955e44",
+      "regionalEntity": "ClaimDto",
+      "regionalEntityId": "regional-entity-660d6dcde2fca5a8d77d",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "dateFiled",
+      "sourceAttributeId": "attribute-9fe00612e5ee6fc8fcce",
+      "sourceEntity": "ClaimDto",
+      "sourceEntityId": "entity-54dc5003bc2c8052f920"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "description",
+      "regionalAttributeId": "regional-attribute-32844089ebc925629173",
+      "regionalEntity": "ClaimDto",
+      "regionalEntityId": "regional-entity-660d6dcde2fca5a8d77d",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "description",
+      "sourceAttributeId": "attribute-84316a0c1743c11689db",
+      "sourceEntity": "ClaimDto",
+      "sourceEntityId": "entity-54dc5003bc2c8052f920"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "id",
+      "regionalAttributeId": "regional-attribute-4570a717e69ad64e5a33",
+      "regionalEntity": "ClaimDto",
+      "regionalEntityId": "regional-entity-660d6dcde2fca5a8d77d",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "id",
+      "sourceAttributeId": "attribute-b0f71783e2a999c83f2a",
+      "sourceEntity": "ClaimDto",
+      "sourceEntityId": "entity-54dc5003bc2c8052f920"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "policyNumber",
+      "regionalAttributeId": "regional-attribute-c354909919fa4aaf272c",
+      "regionalEntity": "ClaimDto",
+      "regionalEntityId": "regional-entity-660d6dcde2fca5a8d77d",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "policyNumber",
+      "sourceAttributeId": "attribute-e1f670bfd9c0f0e51687",
+      "sourceEntity": "ClaimDto",
+      "sourceEntityId": "entity-54dc5003bc2c8052f920"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "address",
+      "regionalAttributeId": "regional-attribute-d564ad19c391ad84bd87",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "address",
+      "sourceAttributeId": "attribute-1f12007cdffd94f7d209",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "dob",
+      "regionalAttributeId": "regional-attribute-36a63fe28427037aad79",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "dob",
+      "sourceAttributeId": "attribute-c29f2b5457cebe1b519b",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "email",
+      "regionalAttributeId": "regional-attribute-2174ec7ac3225a51361a",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "email",
+      "sourceAttributeId": "attribute-1013c5bcf1a817214b89",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "firstName",
+      "regionalAttributeId": "regional-attribute-90118f91864c0b43e172",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "firstName",
+      "sourceAttributeId": "attribute-783207c312bd59d6ba5c",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "id",
+      "regionalAttributeId": "regional-attribute-e565892ac16f1a216bde",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "id",
+      "sourceAttributeId": "attribute-75fc4eea253eeb5b1f7c",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "lastName",
+      "regionalAttributeId": "regional-attribute-776937c6fe4da7f70c91",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "lastName",
+      "sourceAttributeId": "attribute-4aeafa6144deff41a72e",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "phone",
+      "regionalAttributeId": "regional-attribute-fe03c123796894e827f8",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "phone",
+      "sourceAttributeId": "attribute-3bf965a6ea2614056b38",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetProfile \u00b7 GET /api/CustomerProfile (Response 200)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Request)",
+        "insurance CreateProfile \u00b7 POST /api/CustomerProfile (Response 200)",
+        "insurance UpdateProfile \u00b7 PUT /api/CustomerProfile (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "userId",
+      "regionalAttributeId": "regional-attribute-9a71466a40c05efb483e",
+      "regionalEntity": "CustomerProfile",
+      "regionalEntityId": "regional-entity-3886c00fabb0f8ba109f",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "userId",
+      "sourceAttributeId": "attribute-0daadba5705d04ebb093",
+      "sourceEntity": "CustomerProfile",
+      "sourceEntityId": "entity-a3141178649442a7915f"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetAllClaims \u00b7 GET /api/Claims (Response 200)",
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Response 200)",
+        "insurance GetClaimById \u00b7 GET /api/Claims/{id} (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "InsuranceClaim",
+      "regionalEntityId": "regional-entity-b0de0a157a2d7bbc1b8b",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "InsuranceClaim",
+      "sourceEntityId": "entity-b470cf0a0a7aa1d59e3d"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetAllClaims \u00b7 GET /api/Claims (Response 200)",
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Response 200)",
+        "insurance GetClaimById \u00b7 GET /api/Claims/{id} (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "dateFiled",
+      "regionalAttributeId": "regional-attribute-3dc17e31ac42c6796fc0",
+      "regionalEntity": "InsuranceClaim",
+      "regionalEntityId": "regional-entity-b0de0a157a2d7bbc1b8b",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "dateFiled",
+      "sourceAttributeId": "attribute-ff4cfe6aecade5acbb3c",
+      "sourceEntity": "InsuranceClaim",
+      "sourceEntityId": "entity-b470cf0a0a7aa1d59e3d"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetAllClaims \u00b7 GET /api/Claims (Response 200)",
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Response 200)",
+        "insurance GetClaimById \u00b7 GET /api/Claims/{id} (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "description",
+      "regionalAttributeId": "regional-attribute-269553d2c456aaa86116",
+      "regionalEntity": "InsuranceClaim",
+      "regionalEntityId": "regional-entity-b0de0a157a2d7bbc1b8b",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "description",
+      "sourceAttributeId": "attribute-76fee6ebddbf96fac0ff",
+      "sourceEntity": "InsuranceClaim",
+      "sourceEntityId": "entity-b470cf0a0a7aa1d59e3d"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetAllClaims \u00b7 GET /api/Claims (Response 200)",
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Response 200)",
+        "insurance GetClaimById \u00b7 GET /api/Claims/{id} (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "id",
+      "regionalAttributeId": "regional-attribute-35607381dd783c12a79c",
+      "regionalEntity": "InsuranceClaim",
+      "regionalEntityId": "regional-entity-b0de0a157a2d7bbc1b8b",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "id",
+      "sourceAttributeId": "attribute-14cab70c96e3dfae53aa",
+      "sourceEntity": "InsuranceClaim",
+      "sourceEntityId": "entity-b470cf0a0a7aa1d59e3d"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetAllClaims \u00b7 GET /api/Claims (Response 200)",
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Response 200)",
+        "insurance GetClaimById \u00b7 GET /api/Claims/{id} (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "policyNumber",
+      "regionalAttributeId": "regional-attribute-bae2069686e166fc4caa",
+      "regionalEntity": "InsuranceClaim",
+      "regionalEntityId": "regional-entity-b0de0a157a2d7bbc1b8b",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "policyNumber",
+      "sourceAttributeId": "attribute-929e6fe13b24ee170a01",
+      "sourceEntity": "InsuranceClaim",
+      "sourceEntityId": "entity-b470cf0a0a7aa1d59e3d"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance GetAllClaims \u00b7 GET /api/Claims (Response 200)",
+        "insurance SubmitClaim \u00b7 POST /api/Claims (Response 200)",
+        "insurance GetClaimById \u00b7 GET /api/Claims/{id} (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "userId",
+      "regionalAttributeId": "regional-attribute-e25c9d399c4bc01c53b3",
+      "regionalEntity": "InsuranceClaim",
+      "regionalEntityId": "regional-entity-b0de0a157a2d7bbc1b8b",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "userId",
+      "sourceAttributeId": "attribute-fe6ec724659415eef6ae",
+      "sourceEntity": "InsuranceClaim",
+      "sourceEntityId": "entity-b470cf0a0a7aa1d59e3d"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "LoginDto",
+      "regionalEntityId": "regional-entity-19ee7d75c9f3042fbc22",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "LoginDto",
+      "sourceEntityId": "entity-3878047cbeb0f83a61f3"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "password",
+      "regionalAttributeId": "regional-attribute-326147b750a8ef5e71c0",
+      "regionalEntity": "LoginDto",
+      "regionalEntityId": "regional-entity-19ee7d75c9f3042fbc22",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "password",
+      "sourceAttributeId": "attribute-205034e3fd8f1f754782",
+      "sourceEntity": "LoginDto",
+      "sourceEntityId": "entity-3878047cbeb0f83a61f3"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Login \u00b7 POST /api/Auth/login (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "username",
+      "regionalAttributeId": "regional-attribute-45ba398c021ea6195631",
+      "regionalEntity": "LoginDto",
+      "regionalEntityId": "regional-entity-19ee7d75c9f3042fbc22",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "username",
+      "sourceAttributeId": "attribute-acf09e3590cf97785d53",
+      "sourceEntity": "LoginDto",
+      "sourceEntityId": "entity-3878047cbeb0f83a61f3"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Register \u00b7 POST /api/Auth/register (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "RegisterDto",
+      "regionalEntityId": "regional-entity-5deb0da278d841406ee4",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "RegisterDto",
+      "sourceEntityId": "entity-8e8cf423afe37ae5dca7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Register \u00b7 POST /api/Auth/register (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "email",
+      "regionalAttributeId": "regional-attribute-a993ba0da87b6dfbc1de",
+      "regionalEntity": "RegisterDto",
+      "regionalEntityId": "regional-entity-5deb0da278d841406ee4",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "email",
+      "sourceAttributeId": "attribute-d7f543ff9724608d96ec",
+      "sourceEntity": "RegisterDto",
+      "sourceEntityId": "entity-8e8cf423afe37ae5dca7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Register \u00b7 POST /api/Auth/register (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "password",
+      "regionalAttributeId": "regional-attribute-16799e287bb95e9dd102",
+      "regionalEntity": "RegisterDto",
+      "regionalEntityId": "regional-entity-5deb0da278d841406ee4",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "password",
+      "sourceAttributeId": "attribute-6638f656696df1cb5105",
+      "sourceEntity": "RegisterDto",
+      "sourceEntityId": "entity-8e8cf423afe37ae5dca7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Register \u00b7 POST /api/Auth/register (Request)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "username",
+      "regionalAttributeId": "regional-attribute-d04e49a7246b1753558c",
+      "regionalEntity": "RegisterDto",
+      "regionalEntityId": "regional-entity-5deb0da278d841406ee4",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "username",
+      "sourceAttributeId": "attribute-eed74aaaff2bca5a4861",
+      "sourceEntity": "RegisterDto",
+      "sourceEntityId": "entity-8e8cf423afe37ae5dca7"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Get \u00b7 GET /WeatherForecast/GetWeatherForecast (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "",
+      "regionalAttributeId": "",
+      "regionalEntity": "WeatherForecast",
+      "regionalEntityId": "regional-entity-48e569c5b82ab0b88d0a",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "",
+      "sourceAttributeId": "",
+      "sourceEntity": "WeatherForecast",
+      "sourceEntityId": "entity-5297aa6f107f67badc55"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Get \u00b7 GET /WeatherForecast/GetWeatherForecast (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "date",
+      "regionalAttributeId": "regional-attribute-a15d3fcd847ddd8df0a0",
+      "regionalEntity": "WeatherForecast",
+      "regionalEntityId": "regional-entity-48e569c5b82ab0b88d0a",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "date",
+      "sourceAttributeId": "attribute-96d83b14207c5c423f0b",
+      "sourceEntity": "WeatherForecast",
+      "sourceEntityId": "entity-5297aa6f107f67badc55"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Get \u00b7 GET /WeatherForecast/GetWeatherForecast (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "summary",
+      "regionalAttributeId": "regional-attribute-5bdf228dcd53bf0f62e4",
+      "regionalEntity": "WeatherForecast",
+      "regionalEntityId": "regional-entity-48e569c5b82ab0b88d0a",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "summary",
+      "sourceAttributeId": "attribute-ae464152ca28f5637460",
+      "sourceEntity": "WeatherForecast",
+      "sourceEntityId": "entity-5297aa6f107f67badc55"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Get \u00b7 GET /WeatherForecast/GetWeatherForecast (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "temperatureC",
+      "regionalAttributeId": "regional-attribute-912435142b3217b1c217",
+      "regionalEntity": "WeatherForecast",
+      "regionalEntityId": "regional-entity-48e569c5b82ab0b88d0a",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "temperatureC",
+      "sourceAttributeId": "attribute-457f5f58d834a509d6dd",
+      "sourceEntity": "WeatherForecast",
+      "sourceEntityId": "entity-5297aa6f107f67badc55"
+    },
+    {
+      "action": "Retained",
+      "api": "insurance",
+      "endpoints": [
+        "insurance Get \u00b7 GET /WeatherForecast/GetWeatherForecast (Response 200)"
+      ],
+      "region": "EU",
+      "regionalAttribute": "temperatureF",
+      "regionalAttributeId": "regional-attribute-e807bbd29e7a6d26c617",
+      "regionalEntity": "WeatherForecast",
+      "regionalEntityId": "regional-entity-48e569c5b82ab0b88d0a",
+      "repository": "InsurancePortal-main.zip",
+      "reviewerComment": "",
+      "reviewerSelection": "Original",
+      "sourceAttribute": "temperatureF",
+      "sourceAttributeId": "attribute-47b2ba96c0374e61e87f",
+      "sourceEntity": "WeatherForecast",
+      "sourceEntityId": "entity-5297aa6f107f67badc55"
+    }
+  ],
+  "version": "1.0"
+}

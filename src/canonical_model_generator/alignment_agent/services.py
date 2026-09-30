@@ -1,0 +1,43 @@
+"""Deterministic alignment services exposed behind the agent package boundary."""
+
+from canonical_model_generator.acord_alignment import (
+    ALIGNMENT_SELECTIONS,
+    FULL_MATCH,
+    MANUAL,
+    MATCH_STATUSES,
+    NOT_MATCHED,
+    PARTIAL_MATCH,
+    USE_ACORD,
+    USE_BASELINE,
+    USE_GENERATED,
+    approve_acord_alignment,
+    attach_generated_gap_proposal,
+    build_regional_alignment_source,
+    default_alignment_decisions,
+    delete_alignment_artifact,
+    load_alignment_artifacts,
+    propose_acord_alignment,
+    save_alignment_artifact,
+    validate_alignment_decisions,
+)
+
+__all__ = [
+    "ALIGNMENT_SELECTIONS",
+    "FULL_MATCH",
+    "MANUAL",
+    "MATCH_STATUSES",
+    "NOT_MATCHED",
+    "PARTIAL_MATCH",
+    "USE_ACORD",
+    "USE_BASELINE",
+    "USE_GENERATED",
+    "approve_acord_alignment",
+    "attach_generated_gap_proposal",
+    "build_regional_alignment_source",
+    "delete_alignment_artifact",
+    "default_alignment_decisions",
+    "load_alignment_artifacts",
+    "propose_acord_alignment",
+    "save_alignment_artifact",
+    "validate_alignment_decisions",
+]

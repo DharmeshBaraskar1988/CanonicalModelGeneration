@@ -20,6 +20,7 @@ from canonical_model_generator.api_analyzer.prompts import (
     NORMALIZATION_SYSTEM_PROMPT,
 )
 from canonical_model_generator.api_analyzer.token_budget import TokenBudget, TokenBudgetConfig
+from canonical_model_generator.llm_audit import usage_token_counts, write_llm_call_log
 
 
 class OpenAISemanticProvider:
@@ -65,7 +66,8 @@ class OpenAISemanticProvider:
 
     def _parse(self, output_type: type[Any], instructions: str, context: dict[str, Any]) -> Any:
         payload = json.dumps(context, indent=2, sort_keys=True)
-        self._budget.reserve(instructions, payload, operation=output_type.__name__)
+        operation = output_type.__name__
+        estimated_input_tokens = self._budget.reserve(instructions, payload, operation=operation)
         try:
             response = self._client.responses.parse(
                 model=self._model,
@@ -73,14 +75,39 @@ class OpenAISemanticProvider:
                 text_format=output_type,
                 max_output_tokens=self._budget.config.max_output_tokens_per_request,
             )
-        except Exception:
+        except Exception as exc:
             self._budget.record_failure()
+            write_llm_call_log(
+                provider="openai",
+                operation=operation,
+                model=self._model,
+                status="failed",
+                input_tokens=None,
+                output_tokens=None,
+                total_tokens=None,
+                estimated_input_tokens=estimated_input_tokens,
+                produced_result=False,
+                error=exc,
+            )
             raise
         usage = response.usage
+        input_tokens, output_tokens, total_tokens = usage_token_counts(usage)
         self._budget.record(
-            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
-            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
+            input_tokens=input_tokens or 0,
+            output_tokens=output_tokens or 0,
             produced_result=response.output_parsed is not None,
+        )
+        write_llm_call_log(
+            provider="openai",
+            operation=operation,
+            model=self._model,
+            status="completed",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            estimated_input_tokens=estimated_input_tokens,
+            produced_result=response.output_parsed is not None,
+            provider_request_id=getattr(response, "id", None),
         )
         if response.output_parsed is None:
             raise RuntimeError("OpenAI returned no schema-valid semantic result")

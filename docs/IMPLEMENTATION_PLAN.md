@@ -4,6 +4,156 @@ Last updated: 2026-09-29
 Current release: Phase 2 API Analyzer Agent  
 Overall status: In progress
 
+## Plan amendment - Baseline defect clearance (2026-09-29)
+
+Status: Complete. The repository now runs, lints, formats, and tests clean.
+
+- [x] **P2.6ae** Fix the corrupted `Â·` separator in the delete-alignment confirmation dialog so the
+      alignment identity line renders the same `·` separator used everywhere else.
+- [x] **P2.6ae-a** Drive the delete-alignment dialog from `pending_alignment_deletion` session state
+      instead of the transient request-button result, and clear that state on dismissal and after a
+      successful delete, so the dialog survives a full-script rerun.
+- [x] **P2.6ae-b** Correct two Streamlit assertions that searched `AppTest.button` for
+      `st.download_button` widgets, which Streamlit 1.62 exposes as the separate `download_button`
+      collection.
+- [x] **P2.6ae-c** Restore the Ruff gates: sort the `alignment_agent/services.py` import block and
+      reformat `tests/test_streamlit_application_flow.py`.
+
+The dialog change is a robustness and testability fix. In a browser `st.dialog` is fragment-backed,
+so ticking the confirmation checkbox reran only the dialog fragment and the flow already worked; the
+session-state guard additionally keeps the dialog open across a full-script rerun triggered elsewhere.
+
+## Plan amendment - Environment-only OpenAI configuration (2026-09-29)
+
+Status: Complete for every OpenAI entry point in the Streamlit application.
+
+- [x] **P2.6ad** Remove the front-end OpenAI API key field and the four editable OpenAI model inputs; resolve `OPENAI_API_KEY` and `OPENAI_MODEL` from the ignored `.env` file only, through one shared resolver.
+- [x] **P2.6ad-a** Keep a read-only sidebar status that reports whether a key loaded and which model is active, and restate key/model guidance in the Analyzer warning, provider authentication error, and user guide.
+- [x] **P2.6ad-b** Verify that no OpenAI key or model widget remains, that the Analyzer run uses the environment model, then run the full Python suite, Ruff gates, and live Streamlit health.
+
+Consent checkboxes, redaction, token budgets, audit logging, and artifact contents are unchanged;
+only the source of OpenAI configuration moved out of the browser session.
+
+## Plan amendment - Durable LangGraph Alignment Agent (2026-09-29)
+
+Status: Complete for deterministic proposal generation and resumable human review.
+
+- [x] **A3.1** Add an explicit `alignment_agent/` package with state contracts, workflow orchestration, SQLite persistence, and a public start/load/resume API.
+- [x] **A3.2** Orchestrate input validation, baseline-first matching with ACORD fallback, independent inventory validation, and unapproved review initialization through LangGraph.
+- [x] **A3.3** Add a bounded three-attempt transient-failure loop and resume the failed node from its last SQLite checkpoint without replaying completed nodes.
+- [x] **A3.4** Persist reviewer decision drafts in SQLite, reject run-ID reuse with changed evidence, and connect Streamlit proposal generation plus explicit resume to the Alignment Agent boundary.
+- [x] **A3.5** Verify successful checkpointing, transient retry, crash/resume behavior, durable review drafts, changed-input rejection, existing ACORD behavior, and the populated Streamlit flow.
+
+This operator-requested amendment intentionally precedes P2.8. It changes orchestration and durable
+state ownership, not matching scores, approval rules, source evidence, or immutable canonical
+version semantics.
+
+## Plan amendment - Complete unresolved-decision visibility (2026-09-29)
+
+Status: Complete for ACORD alignment validation feedback.
+
+- [x] **P2.6ac** Remove the ten-message display limit, render all unresolved decisions, group explicit approvals separately from missing/invalid decision details, and keep the list compact in a fixed-height scrollable container.
+- [x] **P2.6ac-a** Verify that the displayed all-items count matches the reported unresolved total, then run the full Python suite, Ruff gates, and live Streamlit health.
+
+Validation and submission rules are unchanged; this amendment makes every blocking reason visible.
+
+## Plan amendment - Domain-to-capability review tree (2026-09-29)
+
+Status: Complete for Domain and Capability alignment review.
+
+- [x] **P2.6ab** Replace the Domain/Capability parent and child data editors with the shared compact tree renderer so each domain is an expandable parent and each capability appears once as a child node.
+- [x] **P2.6ab-a** Apply proposed Full/Partial/Not-matched filtering to both levels, retain parent context for a matching child, and expose reviewed status, description, canonical resolution, reason, and evidence in on-demand popovers.
+- [x] **P2.6ab-b** Require explicit approval for every domain and capability, invalidate it after decision edits, show separate progress, and add confirmed bulk approval with a shared reason for the filtered Domain → Capability tree.
+- [x] **P2.6ab-c** Verify Domain/Capability UI rendering and bulk interaction, deterministic approval validation, the full Python suite, Ruff gates, and live Streamlit health.
+
+This amendment removes the last flat alignment editor and makes all four alignment node types follow
+one review and approval contract without changing match calculations or source evidence.
+
+## Plan amendment - Direct approved-alignment version submission (2026-09-29)
+
+Status: Complete for local SQLite canonical governance.
+
+- [x] **C2.7** Replace the alignment action that only generated an intermediate artifact with a direct submit-and-save action that also appends the approved model as the next immutable SQLite `vN`.
+- [x] **C2.7-a** Keep deterministic decision validation and whole-alignment confirmation as submission gates, show why submission is locked, and preview the exact next version number.
+- [x] **C2.7-b** List every submitted version in the Approved canonical baseline selector and Version history with consistent `vN` labels, newest first, without mutating earlier versions.
+- [x] **C2.7-c** Verify direct default approval, `v1`/`v2`/`v3` sequencing and reload order, Streamlit action rendering, the full Python suite, Ruff gates, and live health.
+
+This amendment makes the approved alignment immediately durable and baseline-eligible while retaining
+the Canonical model page for optional keep-original/reject review variants.
+
+## Plan amendment - Compact filtered tree and batch approval (2026-09-29)
+
+Status: Complete for entity and attribute review nodes.
+
+- [x] **P2.6aa** Replace always-expanded node evidence and controls with compact Entity → Attribute summaries and on-demand Review popovers.
+- [x] **P2.6aa-a** Apply the proposed `Full match`, `Partial match`, and `Not matched` filter independently to entity and attribute nodes while retaining a parent entity as context when one of its children matches.
+- [x] **P2.6aa-b** Add a confirmed `Approve all filtered nodes` action that supplies one reviewer reason only where required, preserves existing reasons, and keeps later per-node edits approval-invalidating.
+- [x] **P2.6aa-c** Separate explicit-approval errors from missing/invalid decision details and verify compact rendering, bulk interaction, the full Python suite, Ruff gates, and live Streamlit health.
+
+This amendment reduces review-page scrolling without adding a second attribute representation or
+weakening deterministic validation and whole-alignment approval.
+
+## Plan amendment - Explicit tree-node approval (2026-09-29)
+
+Status: Complete for entity and attribute review nodes.
+
+- [x] **P2.6z** Add an explicit approval checkbox to every entity and attribute child node and expose approved-versus-total tree progress.
+- [x] **P2.6z-a** Clear a node's approval whenever its status, description, resolution, reason, or manual details change, and require explicit node approval at the deterministic validation boundary.
+- [x] **P2.6z-b** Keep the existing whole-model confirmation and domain/capability validation, then verify checkbox interaction, approval gating, full Python regressions, lint, and formatting.
+
+This amendment makes approval visible where the decision is edited without weakening the existing
+whole-alignment submission gate or changing source/proposal evidence.
+
+## Plan amendment - Single entity-to-attribute review tree (2026-09-29)
+
+Status: Complete; supersedes the multiple attribute views introduced by P2.6x.
+
+- [x] **P2.6y** Keep the Entity expander as the only parent view and render every attribute exactly once as a bordered child node with its regional/baseline/ACORD evidence and review controls.
+- [x] **P2.6y-a** Remove the entity comparison table, attribute field table, and attribute-selection dropdown without changing review validation or approved artifact semantics.
+- [x] **P2.6y-b** Verify the single-tree Streamlit rendering, absence of the attribute dropdown, alignment behavior, full Python regression suite, lint, and formatting.
+
+This revision uses native Streamlit expanders and bordered containers. It avoids nested expanders,
+which Streamlit documents as a layout anti-pattern, and does not add a custom component.
+
+## Plan amendment - Entity match review tree (2026-09-29)
+
+Status: Complete for the ACORD entity and attribute review workspace.
+
+- [x] **P2.6x** Replace the flat entity/attribute decision tables with an expandable Entity → Attributes tree, show regional/baseline/ACORD entity evidence and attribute fields in read-only tables, and provide radio-button `Full match`, `Partial match`, and `Not matched` review status with editable description and reviewer reason for entities and selected attributes.
+- [x] **P2.6x-a** Preserve the deterministic proposed status separately from the reviewer-selected status, require a reason for non-full or overridden status, and carry the reviewed status, description, and reason into approved canonical entities, attributes, and mapping records.
+- [x] **P2.6x-b** Verify the decision contract, approved artifact ledger, Streamlit rendering, complete Python regression suite, lint, formatting, and live health endpoint.
+
+This operator-requested UI slice intentionally runs before P2.8. It changes review presentation and
+approval metadata only; deterministic matching scores and source evidence remain unchanged.
+
+## Plan amendment - Multi-region canonical baseline expansion (2026-09-29)
+
+Status: Complete for one submitted-baseline plus one later-region vertical slice.
+
+- [x] **C2.1** Let ACORD Alignment select an immutable submitted canonical version as the baseline for a later regional catalog while retaining ACORD-only alignment for the first region.
+- [x] **C2.2** Compare entities, attributes, domains, and capabilities with the canonical baseline first; compare incomplete baseline matches with the selected ACORD reference and retain both candidate scores and provenance.
+- [x] **C2.3** Default full baseline matches to the approved canonical value, use ACORD as fallback evidence, and treat items still not matched after both comparisons as explicit reviewer gaps.
+- [x] **C2.4** Let reviewers resolve a true gap with manual name, description, type, and JSON constraints or explicitly invoke a text-only OpenAI Structured Output proposal for that single item; keep generated output as a draft until selected and approved.
+- [x] **C2.5** Merge an approved later-region delta into a copy of the baseline model, preserve source regions and mapping provenance, append new fields/entities/endpoints without mutating the baseline version, and pass the consolidated artifact to Canonical Model review/versioning.
+- [x] **C2.6** Verify baseline-first matching, generated-gap approval, constraint retention, multi-region merge counts, existing one-region behavior, Streamlit flow, repository-wide Python tests, and Ruff gates.
+
+This slice establishes controlled multi-region growth from a governed canonical snapshot. It does
+not automatically accept model output, overwrite an earlier canonical version, or perform adapter
+generation and change-impact analysis.
+
+## Plan amendment - Versioned canonical model registry (2026-09-29)
+
+Status: Complete for the single-region approved-alignment vertical slice.
+
+- [x] **C1.1** Add a whole-model final review over approved canonical entities, attributes, domains, and capabilities with explicit use-canonical, keep-regional-original, and reject decisions.
+- [x] **C1.2** Submit the entire reviewed model in one action and append an immutable version to a local ignored SQLite database on every submission.
+- [x] **C1.3** Reopen submitted version history with model counts and the complete reviewed canonical artifact.
+- [x] **C1.4** Generate downloadable OpenAPI 3.0.3 JSON and YAML for every submitted version, retaining selected entity/field descriptions, requiredness, constraints, endpoint routes/methods, response/request model links, domains, and capabilities.
+- [x] **C1.5** Verify rejection, original-name restoration, version increments, SQLite round trips, and equivalent JSON/YAML OpenAPI output.
+
+This operator-requested governance slice follows an explicitly approved ACORD alignment. It does
+not modify Discovery, API Analyzer, Regional View, ACORD ingestion, or alignment evidence.
+
 ## Plan amendment - ACORD alignment and canonical review (2026-09-29)
 
 Status: Complete for a single-region, reviewer-approved alignment artifact; canonical version
@@ -16,6 +166,7 @@ governance and multi-region consolidation remain later capabilities.
 - [x] **A2.5** Block approval until every entity, attribute, domain, and capability decision is valid; never mutate Regional View or ACORD ingestion evidence.
 - [x] **A2.6** Generate and persist an approved canonical artifact containing canonical entities, attributes, domains, capabilities, canonical endpoints, approved entity usages, and the complete mapping/reason ledger.
 - [x] **A2.7** Add a Canonical View with model, endpoint, and approval-mapping views plus JSON download, saved-history reopening, deterministic unit coverage, and Streamlit flow coverage.
+- [x] **A2.8** Expose the approved result as an explicit `Canonical model` sidebar page, separate from ACORD Alignment, and migrate sessions that retained the former `Canonical view` navigation label.
 
 This slice advances roadmap alignment and produces an approved single-region canonical model. It
 does not claim enterprise canonical versioning, multi-region conflict resolution, regional adapter
@@ -333,8 +484,8 @@ The completed M0-M7 plan is Platform Phase 1. Future platform phases remain sepa
 2. **API Analyzer Agent — In progress:** classify domain/capability and generate a source-grounded enriched OpenAPI contract.
 3. **ACORD reference ingestion — Complete:** independently parse and index an approved ACORD OpenAPI reference.
 4. **ACORD alignment — Complete for one-region review:** compare a selected regional catalog with an accepted ACORD reference, resolve every mapping, and persist the approved review artifact.
-5. **Canonicalization — In progress:** generate the approved single-region canonical model and endpoints from alignment decisions; multi-region consolidation and version governance remain open.
-6. **Review and versioning — Not started:** approve and govern canonical versions.
+5. **Canonicalization — In progress:** generate approved canonical models and endpoints from alignment decisions; baseline-first consolidation is complete for one submitted baseline plus one later region.
+6. **Review and versioning — Complete for local governance:** approve whole-model decisions, append immutable local SQLite versions, and publish reviewed OpenAPI snapshots.
 7. **Regional mapping — Not started:** maintain region-to-canonical mappings.
 8. **Change impact — Not started:** assess future regional and canonical changes.
 
@@ -391,6 +542,10 @@ Status: In progress
 - [x] **P2.6o** Expose saved per-application RAG readiness and selection directly in the Repository RAG and API Analyzer tabs so an existing valid index can be reused without rebuilding.
 - [x] **P2.6p** Surface the active Discovery ingestion first in Repository RAG with explicit region, application identity, run ID, and current/RAG state.
 - [x] **P2.6q** Show one selected-application journey across the first four implemented stages and represent ACORD ingestion/alignment as planned, gated work rather than active functionality.
+- [x] **P2.6x** Present entity alignment as an expandable Entity → Attributes tree with tabular field evidence, reviewer radio status, description, and reason while retaining proposed-versus-reviewed status in approved artifacts.
+- [x] **P2.6y** Supersede the duplicate P2.6x attribute views with one Entity → Attribute tree where each field appears once with evidence and review controls and no table or attribute dropdown.
+- [x] **P2.6z** Require explicit approval on every entity and attribute tree node, automatically invalidate approval after decision edits, and show aggregate tree approval progress before final submission.
+- [x] **P2.6aa** Compact the Entity → Attribute tree with per-node Review popovers, filter both hierarchy levels by proposed status, and provide confirmed bulk approval for the filtered node set.
 - [x] **P2.7** Orchestrate provider preflight, context building, endpoint classification/enrichment, entity/attribute batching, enum enrichment, rendering, and validation with LangGraph.
 - [x] **P2.7a** Ingest bounded redacted repository chunks into an ephemeral local Chroma index, retrieve target-specific evidence before semantic decisions, allow evidence-backed controller/module domains and action capabilities, emit one domain tag per operation, and resolve known Phase 1 CLR type names before marking a type unresolved.
 - [x] **P2.7b** Establish production module boundaries for API Analyzer contracts, versioned prompts, provider adapters, and bounded tools while preserving the existing public workflow API.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html as _html
 import json
 import os
 import sys
@@ -8,6 +9,7 @@ from hashlib import sha256
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
+from typing import Any
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -18,20 +20,6 @@ from streamlit.typing import UploadedFile
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
-from canonical_model_generator.acord_alignment import (  # noqa: E402
-    MANUAL,
-    MATCH_STATUSES,
-    NOT_MATCHED,
-    PARTIAL_MATCH,
-    USE_ACORD,
-    approve_acord_alignment,
-    build_regional_alignment_source,
-    default_alignment_decisions,
-    load_alignment_artifacts,
-    propose_acord_alignment,
-    save_alignment_artifact,
-    validate_alignment_decisions,
-)
 from canonical_model_generator.acord_rag import (  # noqa: E402
     ACORD_ARTIFACTS,
     AcordDocumentIndex,
@@ -40,8 +28,35 @@ from canonical_model_generator.acord_rag import (  # noqa: E402
     parse_acord_document,
 )
 from canonical_model_generator.acord_rag.history import (  # noqa: E402
+    delete_acord_record,
     load_acord_records,
     save_acord_record,
+)
+from canonical_model_generator.alignment_agent import (  # noqa: E402
+    ALIGNMENT_SELECTIONS,
+    FULL_MATCH,
+    MANUAL,
+    MATCH_STATUSES,
+    NOT_MATCHED,
+    PARTIAL_MATCH,
+    USE_ACORD,
+    USE_BASELINE,
+    USE_GENERATED,
+    AlignmentAgentError,
+    OpenAICanonicalGapProvider,
+    alignment_input_digest,
+    approve_acord_alignment,
+    attach_generated_gap_proposal,
+    build_regional_alignment_source,
+    delete_alignment_artifact,
+    load_alignment_agent_state,
+    load_alignment_artifacts,
+    persist_alignment_decisions,
+    purge_alignment_agent_run,
+    resume_alignment_agent,
+    run_alignment_agent,
+    save_alignment_artifact,
+    validate_alignment_decisions,
 )
 from canonical_model_generator.api_analyzer import (  # noqa: E402
     OpenAISemanticProvider,
@@ -56,6 +71,12 @@ from canonical_model_generator.application_history import (  # noqa: E402
     load_application_records,
     save_application_record,
 )
+from canonical_model_generator.canonical_registry import (  # noqa: E402
+    REVIEW_ACTIONS,
+    default_final_review,
+    load_canonical_versions,
+    submit_canonical_version,
+)
 from canonical_model_generator.discovery_agent.artifacts import generate_artifacts  # noqa: E402
 from canonical_model_generator.discovery_agent.model import DiscoveryModel  # noqa: E402
 from canonical_model_generator.discovery_agent.openapi import discover_openapi  # noqa: E402
@@ -68,6 +89,11 @@ from canonical_model_generator.intake import (  # noqa: E402
     IntakeError,
     inspect_repository_zip,
     validate_openapi,
+)
+from canonical_model_generator.llm_audit import llm_log_directory  # noqa: E402
+from canonical_model_generator.openai_config import (  # noqa: E402
+    resolve_openai_api_key,
+    resolve_openai_model,
 )
 from canonical_model_generator.regional_catalog import (  # noqa: E402
     regional_catalog_rows,
@@ -89,14 +115,205 @@ from canonical_model_generator.repository_rag.index import ChromaRepositoryIndex
 from canonical_model_generator.workflow_progress import reached_stage_count  # noqa: E402
 
 st.set_page_config(
-    page_title="Insurance Canonical Model Platform",
+    page_title="Canonical Model Platform",
     page_icon=":material/account_tree:",
     layout="wide",
 )
 
+# ── Global UI theme ──────────────────────────────────────────────────────────
+st.markdown(
+    """
+<style>
+/* ── Base ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+html,body,[class*="css"]{font-family:'Inter',system-ui,-apple-system,sans-serif}
+.stApp{background:#f4f6fb}
+.block-container{padding-top:1.25rem!important}
+
+/* ── Main title ── */
+h1{color:#1e293b!important;font-weight:800!important;letter-spacing:-.025em}
+h2,h3{color:#1e293b!important;font-weight:600!important;letter-spacing:-.015em}
+p,li,label{color:#334155}
+
+/* ── Sidebar ── */
+section[data-testid="stSidebar"]{
+  background:#ffffff!important;
+  border-right:1px solid #e2e8f0!important;
+  box-shadow:2px 0 12px rgba(0,0,0,.06)!important}
+section[data-testid="stSidebarContent"]{background:transparent!important}
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] span{color:#1e293b!important}
+section[data-testid="stSidebar"] .stCaption p{
+  color:#64748b!important;text-transform:uppercase;
+  font-size:.62rem!important;letter-spacing:.1em;font-weight:700}
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3{color:#1e293b!important}
+
+/* Sidebar pill buttons — idle */
+section[data-testid="stSidebar"] [data-testid="stPills"] button{
+  background:#f8fafc!important;
+  color:#334155!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:7px!important;font-size:.8rem!important;
+  transition:background .15s,color .15s,border-color .15s!important}
+/* Sidebar pill buttons — hover */
+section[data-testid="stSidebar"] [data-testid="stPills"] button:hover{
+  background:#eff6ff!important;
+  color:#1d4ed8!important;
+  border-color:#bfdbfe!important}
+/* Sidebar pill buttons — selected */
+section[data-testid="stSidebar"] [data-testid="stPills"] button[aria-selected="true"]{
+  background:linear-gradient(135deg,#1d4ed8,#2563eb)!important;
+  color:#ffffff!important;
+  border-color:#2563eb!important;
+  box-shadow:0 2px 8px rgba(37,99,235,.3)!important;
+  font-weight:700!important}
+
+/* Sidebar hr */
+section[data-testid="stSidebar"] hr{
+  border-color:#e2e8f0!important}
+
+/* ── Tab bar ── */
+.stTabs [data-baseweb="tab-list"]{
+  background:transparent!important;
+  border:none!important;
+  border-bottom:2px solid #e2e8f0!important;
+  border-radius:0!important;padding:0!important;gap:0!important}
+.stTabs [data-baseweb="tab"]{
+  background:transparent!important;
+  border:none!important;border-radius:0!important;
+  color:#64748b!important;
+  font-size:.85rem!important;font-weight:500!important;
+  padding:10px 20px!important;
+  border-bottom:2px solid transparent!important;
+  margin-bottom:-2px!important;
+  transition:color .15s,border-color .15s!important}
+.stTabs [data-baseweb="tab"]:hover{
+  color:#1d4ed8!important;
+  border-bottom-color:#93c5fd!important;
+  background:transparent!important}
+.stTabs [aria-selected="true"]{
+  color:#1d4ed8!important;font-weight:700!important;
+  border-bottom:2px solid #2563eb!important;
+  background:transparent!important;
+  box-shadow:none!important}
+
+/* ── Metric tiles ── */
+[data-testid="metric-container"]{
+  background:#ffffff!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  box-shadow:0 1px 4px rgba(0,0,0,.06)!important}
+[data-testid="stMetricValue"]{color:#1e293b!important;font-weight:700!important}
+[data-testid="stMetricLabel"]{color:#64748b!important}
+[data-testid="stMetricDelta"]{font-weight:600!important}
+
+/* ── Bordered containers ── */
+[data-testid="stVerticalBlockBorderWrapper"]{
+  background:#ffffff!important;
+  border-color:#e2e8f0!important;border-radius:12px!important;
+  box-shadow:0 1px 6px rgba(0,0,0,.06)!important}
+
+/* ── Buttons ── */
+button[kind="primary"]{
+  background:linear-gradient(135deg,#1d4ed8,#2563eb)!important;
+  border:none!important;border-radius:8px!important;
+  font-weight:600!important;letter-spacing:.02em!important;
+  box-shadow:0 2px 10px rgba(37,99,235,.3)!important;color:#fff!important}
+button[kind="secondary"]{
+  border-color:#cbd5e1!important;
+  border-radius:8px!important;background:#ffffff!important;
+  color:#1e293b!important}
+
+/* ── Expanders ── */
+[data-testid="stExpander"] summary{
+  background:#ffffff!important;border-radius:8px!important;
+  border:1px solid #e2e8f0!important;color:#1e293b!important}
+
+/* ── HR divider ── */
+hr{border-color:#e2e8f0!important;margin:18px 0!important}
+
+/* ── Alerts ── */
+[data-testid="stAlertContainer"]{border-radius:10px!important}
+
+/* ── Status ── */
+[data-testid="stStatus"]{
+  border-radius:10px!important;background:#ffffff!important;
+  border:1px solid #e2e8f0!important}
+
+/* ── Inputs ── */
+[data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea{
+  background:#ffffff!important;
+  border-color:#cbd5e1!important;border-radius:8px!important;
+  color:#1e293b!important}
+
+/* ── Captions ── */
+.stCaption p{color:#64748b!important}
+
+/* ── Select / Dropdown ── */
+[data-testid="stSelectbox"] div,[data-testid="stMultiSelect"] div{
+  color:#1e293b!important}
+
+/* ── Progress bar ── */
+[data-testid="stProgressBar"]>div{border-radius:999px!important}
+
+/* ── Dataframes ── */
+[data-testid="stDataFrame"]{border-radius:10px!important;overflow:hidden}
+
+/* ── Code blocks ── */
+code{background:#f1f5f9!important;color:#1e293b!important;
+     border-radius:4px!important;padding:1px 5px!important}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 APPLICATION_HISTORY_ROOT = Path(__file__).resolve().parent / ".applications"
 ACORD_HISTORY_ROOT = Path(__file__).resolve().parent / ".acord"
-ALIGNMENT_HISTORY_ROOT = Path(__file__).resolve().parent / ".alignments"
+REGIONAL_REVIEWS_ROOT = Path(__file__).resolve().parent / ".regional-reviews"
+
+
+def _save_regional_review(root: Path, region: str, review: dict[str, Any]) -> None:
+    """Persist an approved regional review JSON so it survives page reloads."""
+    import re as _re
+
+    root.mkdir(parents=True, exist_ok=True)
+    safe = _re.sub(r"[^a-z0-9_-]", "-", region.casefold()).strip("-") or "region"
+    tmp = root / f"{safe}.json.tmp"
+    tmp.write_text(json.dumps(review, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(root / f"{safe}.json")
+
+
+def _load_regional_reviews(root: Path) -> dict[str, dict[str, Any]]:
+    """Load previously approved regional reviews from disk and rebuild derived artifacts."""
+    reviews: dict[str, dict[str, Any]] = {}
+    if not root.is_dir():
+        return reviews
+    for path in sorted(root.glob("*.json")):
+        try:
+            review = json.loads(path.read_text(encoding="utf-8"))
+            region = review.get("region")
+            if not region:
+                continue
+            reviews[region] = {
+                "review": review,
+                "excel": render_regional_review_excel(review),
+                "mermaid": render_regional_review_mermaid(review),
+            }
+        except Exception:
+            continue
+    return reviews
+
+
+ALIGNMENT_HISTORY_ROOT = Path(
+    os.getenv("ALIGNMENT_HISTORY_ROOT", Path(__file__).resolve().parent / ".alignments")
+)
+ALIGNMENT_AGENT_DATABASE = Path(
+    os.getenv("ALIGNMENT_AGENT_DATABASE", ALIGNMENT_HISTORY_ROOT / "alignment-agent.sqlite3")
+)
+CANONICAL_DATABASE = Path(__file__).resolve().parent / ".canonical" / "canonical-models.sqlite3"
 
 DISCOVERY_ARTIFACTS = {
     "API Catalog": "api-catalog.json",
@@ -137,6 +354,7 @@ st.session_state.setdefault("acord_results", [])
 st.session_state.setdefault("alignment_reviews", {})
 st.session_state.setdefault("active_alignment_id", None)
 st.session_state.setdefault("acord_alignment_drafts", {})
+st.session_state.setdefault("canonical_gap_proposals", {})
 if not st.session_state["application_runs"]:
     st.session_state["application_runs"] = load_application_records(APPLICATION_HISTORY_ROOT)
 if not st.session_state["acord_runs"]:
@@ -153,6 +371,8 @@ if (
     and st.session_state["active_alignment_id"] not in st.session_state["alignment_reviews"]
 ):
     st.session_state["active_alignment_id"] = next(reversed(st.session_state["alignment_reviews"]))
+if not st.session_state["approved_regional_reviews"]:
+    st.session_state["approved_regional_reviews"] = _load_regional_reviews(REGIONAL_REVIEWS_ROOT)
 
 
 def build_artifact_bundle(artifacts: dict[str, bytes]) -> bytes:
@@ -177,6 +397,325 @@ def build_acord_bundle(artifacts: dict[str, bytes]) -> bytes:
         for label, content in artifacts.items():
             archive.writestr(ACORD_ARTIFACTS[label], content)
     return bundle.getvalue()
+
+
+def _hero_banner(
+    icon: str,
+    eyebrow: str,
+    title: str,
+    body: str,
+    accent: str = "#2563eb",
+    glow_right: str = "rgba(37,99,235,.08)",
+    glow_left: str = "rgba(99,102,241,.06)",
+) -> str:
+    """Full-width light hero banner with subtle radial glow decorations."""
+    return f"""
+<div style="background:linear-gradient(135deg,#eff6ff 0%,#f8fafc 60%,#f0f7ff 100%);
+            border:1px solid {accent}33;border-radius:16px;padding:28px 28px;
+            position:relative;overflow:hidden;margin-bottom:4px">
+  <div style="position:absolute;top:-50px;right:-50px;width:320px;height:320px;
+              background:radial-gradient(circle,{glow_right},transparent 68%);
+              pointer-events:none;z-index:0"></div>
+  <div style="position:absolute;bottom:-70px;left:160px;width:220px;height:220px;
+              background:radial-gradient(circle,{glow_left},transparent 68%);
+              pointer-events:none;z-index:0"></div>
+  <div style="display:flex;align-items:center;gap:20px;position:relative;z-index:1">
+    <div style="background:linear-gradient(135deg,{accent}22,{accent}11);
+                border:1px solid {accent}44;border-radius:14px;padding:14px;
+                font-size:28px;line-height:1;flex-shrink:0">{icon}</div>
+    <div>
+      <div style="color:{accent};font-size:.68rem;font-weight:700;letter-spacing:.13em;
+                  text-transform:uppercase;margin-bottom:6px;font-family:system-ui">{eyebrow}</div>
+      <h2 style="color:#1e293b;font-size:1.55rem;font-weight:700;margin:0;
+                 font-family:system-ui;line-height:1.25">{title}</h2>
+      <p style="color:#64748b;font-size:.87rem;margin:8px 0 0;font-family:system-ui;
+                max-width:680px;line-height:1.55">{body}</p>
+    </div>
+  </div>
+</div>"""
+
+
+def _pipeline_steps(steps: list[tuple[str, str, str]]) -> str:
+    """Horizontal pipeline strip.  Each tuple: (label, state, icon_char).
+    state: 'done' | 'active' | 'pending'
+    """
+    _colors = {
+        "done": ("#f0fdf4", "#166534", "#22c55e"),
+        "active": ("#eff6ff", "#1e40af", "#3b82f6"),
+        "pending": ("#f8fafc", "#94a3b8", "#cbd5e1"),
+    }
+    parts: list[str] = []
+    for i, (label, state, icon_char) in enumerate(steps):
+        bg, fg, border = _colors.get(state, _colors["pending"])
+        connector = (
+            f'<div style="flex:1;height:2px;background:linear-gradient(90deg,{border},{border}88);'
+            f'min-width:20px;max-width:60px"></div>'
+            if i < len(steps) - 1
+            else ""
+        )
+        parts.append(
+            f'<div style="display:flex;align-items:center;gap:8px;padding:9px 16px;'
+            f"background:{bg};border:1px solid {border}55;border-radius:8px;"
+            f'white-space:nowrap">'
+            f'<span style="background:{border};color:#000;width:18px;height:18px;'
+            f"border-radius:50%;display:inline-flex;align-items:center;justify-content:center;"
+            f'font-size:.65rem;font-weight:700;flex-shrink:0">{icon_char}</span>'
+            f'<span style="color:{fg};font-size:.78rem;font-weight:600;'
+            f'font-family:system-ui">{label}</span>'
+            f"</div>" + connector
+        )
+    return (
+        '<div style="display:flex;align-items:center;gap:0;'
+        'flex-wrap:wrap;row-gap:8px;margin:14px 0">' + "".join(parts) + "</div>"
+    )
+
+
+def _stat_tile(value: str | int, label: str, accent: str = "#2563eb") -> str:
+    """Return an HTML string for a single coloured metric tile."""
+    return (
+        f'<div style="flex:1;min-width:110px;max-width:160px;background:#ffffff;'
+        f"border:1px solid {accent}22;border-top:3px solid {accent};border-radius:10px;"
+        f"box-shadow:0 1px 4px rgba(0,0,0,.06);"
+        f'padding:18px 12px;text-align:center;">'
+        f'<div style="color:{accent};font-size:2rem;font-weight:700;line-height:1.1">{value}</div>'
+        f'<div style="color:#64748b;font-size:.72rem;margin-top:6px;text-transform:uppercase;'
+        f'letter-spacing:.07em">{label}</div>'
+        f"</div>"
+    )
+
+
+def _status_pill(text: str, kind: str = "success") -> str:
+    """Return an HTML status pill badge."""
+    _palettes = {
+        "success": ("#dcfce7", "#166534", "✓"),
+        "info": ("#dbeafe", "#1e40af", "●"),
+        "warning": ("#fef3c7", "#92400e", "⚠"),
+        "neutral": ("#f1f5f9", "#475569", "○"),
+    }
+    bg, fg, icon = _palettes.get(kind, _palettes["info"])
+    return (
+        f'<span style="background:{bg};color:{fg};padding:4px 12px;border-radius:12px;'
+        f"font-size:.7rem;font-weight:700;letter-spacing:.07em;white-space:nowrap;"
+        f'font-family:system-ui,sans-serif">{icon} {text}</span>'
+    )
+
+
+def _section_heading(title: str, subtitle: str = "") -> str:
+    """Return an HTML section heading with a left accent bar."""
+    sub = (
+        f'<p style="color:#64748b;font-size:.85rem;margin:4px 0 0;'
+        f'font-family:system-ui,sans-serif">{subtitle}</p>'
+        if subtitle
+        else ""
+    )
+    return (
+        f'<div style="border-left:4px solid #2563eb;padding:4px 0 4px 14px;margin:8px 0 16px">'
+        f'<h3 style="color:#1e293b;font-size:1.05rem;font-weight:600;margin:0;'
+        f'font-family:system-ui,sans-serif">{title}</h3>{sub}</div>'
+    )
+
+
+def _coverage_ring_html(percent: float, label: str = "MATCHED") -> str:
+    """SVG donut ring showing a coverage percentage."""
+    r = 46
+    circ = 2 * 3.14159 * r
+    offset = circ * (1 - max(0.0, min(1.0, percent / 100)))
+    color = "#22c55e" if percent >= 75 else "#f59e0b" if percent >= 40 else "#ef4444"
+    return f"""
+<svg width="130" height="130" viewBox="0 0 130 130"
+     style="flex-shrink:0;display:block" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="65" cy="65" r="{r}" fill="none" stroke="#e2e8f0" stroke-width="11"/>
+  <circle cx="65" cy="65" r="{r}" fill="none" stroke="{color}" stroke-width="11"
+          stroke-linecap="round"
+          stroke-dasharray="{circ:.1f}" stroke-dashoffset="{offset:.1f}"
+          transform="rotate(-90 65 65)"/>
+  <text x="65" y="61" text-anchor="middle" fill="#1e293b"
+        font-size="21" font-weight="700" font-family="system-ui">{percent:.0f}%</text>
+  <text x="65" y="77" text-anchor="middle" fill="#64748b"
+        font-size="9" font-weight="600" letter-spacing="1"
+        font-family="system-ui">{label}</text>
+</svg>"""
+
+
+def _summary_card_html(
+    title: str,
+    subtitle: str,
+    pill_text: str,
+    pill_kind: str,
+    stat_tiles_html: str,
+    footer: str = "",
+) -> str:
+    """Return a full-width dark gradient summary card."""
+    footer_html = (
+        f'<p style="color:#64748b;font-size:.72rem;margin:16px 0 0;'
+        f'font-family:system-ui,sans-serif">{footer}</p>'
+        if footer
+        else ""
+    )
+    return f"""
+<div style="background:linear-gradient(135deg,#ffffff 0%,#f0f7ff 100%);
+            border:1px solid #dbeafe;border-radius:12px;padding:24px;margin:10px 0;
+            box-shadow:0 2px 10px rgba(37,99,235,.08);">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;
+              flex-wrap:wrap;gap:10px;margin-bottom:8px">
+    <div>
+      <h2 style="color:#1e293b;margin:0;font-size:1.35rem;font-weight:600;
+                 font-family:system-ui,sans-serif">{title}</h2>
+      <p style="color:#64748b;margin:5px 0 0;font-size:.83rem;
+                font-family:system-ui,sans-serif">{subtitle}</p>
+    </div>
+    {_status_pill(pill_text, pill_kind)}
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px">
+    {stat_tiles_html}
+  </div>
+  {footer_html}
+</div>"""
+
+
+def render_artifact_download_gallery(
+    *,
+    title: str,
+    artifacts: dict[str, bytes],
+    filenames: dict[str, str],
+    key_prefix: str,
+    bundle: bytes,
+    bundle_filename: str,
+    extra_downloads: list[dict[str, Any]] | None = None,
+) -> None:
+    """Render a compact right-side gallery for generated artifact downloads."""
+    with st.container(border=True):
+        st.subheader(title, anchor=False)
+        st.caption(f"{len(artifacts)} generated artifacts")
+        for label, filename in filenames.items():
+            with st.container(border=True, gap=None):
+                st.markdown(f"**{label}**")
+                st.caption(filename)
+                st.download_button(
+                    "Download JSON",
+                    data=artifacts[label],
+                    file_name=filename,
+                    mime="application/json",
+                    icon=":material/download:",
+                    key=f"{key_prefix}_{filename}",
+                    width="stretch",
+                )
+        st.download_button(
+            "Download all artifacts",
+            data=bundle,
+            file_name=bundle_filename,
+            mime="application/zip",
+            type="primary",
+            icon=":material/folder_zip:",
+            key=f"{key_prefix}_all",
+            width="stretch",
+        )
+        for item in extra_downloads or []:
+            st.download_button(
+                item["label"],
+                data=item["data"],
+                file_name=item["filename"],
+                mime=item["mime"],
+                icon=":material/download:",
+                key=f"{key_prefix}_{item['key']}",
+                width="stretch",
+            )
+
+
+def dismiss_alignment_deletion() -> None:
+    """Forget the pending deletion so a dismissed dialog does not reopen."""
+    st.session_state.pop("pending_alignment_deletion", None)
+
+
+@st.dialog("Delete approved ACORD alignment", on_dismiss=dismiss_alignment_deletion)
+def confirm_delete_alignment(alignment_id: str) -> None:
+    alignments = st.session_state["alignment_reviews"]
+    artifact = alignments.get(alignment_id)
+    if artifact is None:
+        st.error("This alignment is no longer available.")
+        return
+    reference = artifact.get("acordReference", {})
+    st.warning(
+        "This permanently deletes only the selected saved alignment artifact. Submitted "
+        "canonical versions, ACORD ingestion, regional evidence, and agent checkpoints remain."
+    )
+    st.markdown(
+        f"**{artifact.get('region', 'Unknown region')} · "
+        f"{reference.get('referenceLabel', 'ACORD')} "
+        f"{reference.get('referenceVersion', '')} [{alignment_id[:6]}]**"
+    )
+    confirmed = st.checkbox(
+        "I understand this saved alignment artifact will be deleted.",
+        key=f"confirm_delete_alignment_{alignment_id}",
+    )
+    if st.button(
+        "Delete alignment",
+        type="primary",
+        icon=":material/delete:",
+        disabled=not confirmed,
+        key=f"delete_alignment_{alignment_id}",
+    ):
+        try:
+            if not delete_alignment_artifact(ALIGNMENT_HISTORY_ROOT, alignment_id):
+                st.error("The saved alignment file was not found; nothing was deleted.")
+                return
+            del alignments[alignment_id]
+            st.session_state["active_alignment_id"] = next(reversed(alignments), None)
+            st.session_state.pop(f"final_canonical_review_{alignment_id}", None)
+            st.session_state.pop("pending_alignment_deletion", None)
+            st.session_state["alignment_delete_notice"] = (
+                f"Deleted saved ACORD alignment [{alignment_id[:6]}]. "
+                "Submitted canonical versions were retained."
+            )
+            st.rerun()
+        except (OSError, ValueError) as exc:
+            st.error(f"Alignment deletion failed: {exc}")
+
+
+def dismiss_acord_deletion() -> None:
+    """Forget the pending ACORD deletion so a dismissed dialog does not reopen."""
+    st.session_state.pop("pending_acord_deletion", None)
+
+
+@st.dialog("Delete ACORD ingestion", on_dismiss=dismiss_acord_deletion)
+def confirm_delete_acord(run_id: str) -> None:
+    acord_runs = st.session_state["acord_runs"]
+    run = acord_runs.get(run_id)
+    if run is None:
+        st.error("This ACORD ingestion is no longer available.")
+        return
+    profile = run["profile"]
+    st.warning(
+        "This permanently deletes the selected ACORD ingestion and its local index. "
+        "Saved alignment artifacts and submitted canonical versions are not affected."
+    )
+    st.markdown(
+        f"**{profile['referenceLabel']} · {profile['referenceVersion']} · "
+        f"{profile['sourceFile']} [{run_id[:6]}]**"
+    )
+    confirmed = st.checkbox(
+        "I understand this ACORD ingestion and its index will be deleted.",
+        key=f"confirm_delete_acord_{run_id}",
+    )
+    if st.button(
+        "Delete ACORD ingestion",
+        type="primary",
+        icon=":material/delete:",
+        disabled=not confirmed,
+        key=f"delete_acord_{run_id}",
+    ):
+        try:
+            delete_acord_record(ACORD_HISTORY_ROOT, run_id)
+            del acord_runs[run_id]
+            if st.session_state.get("active_acord_id") == run_id:
+                st.session_state["active_acord_id"] = next(reversed(acord_runs), None)
+            st.session_state.pop("pending_acord_deletion", None)
+            st.session_state["acord_delete_notice"] = (
+                f"Deleted ACORD ingestion [{run_id[:6]}]. Saved alignment artifacts were retained."
+            )
+            st.rerun()
+        except (OSError, ValueError) as exc:
+            st.error(f"ACORD ingestion deletion failed: {exc}")
 
 
 def ingest_acord_reference(
@@ -229,12 +768,8 @@ def ingest_acord_reference(
 
 
 def openai_api_key() -> str | None:
-    try:
-        configured = st.secrets.get("OPENAI_API_KEY")
-    except (FileNotFoundError, KeyError):
-        configured = None
-    value = configured or os.getenv("OPENAI_API_KEY")
-    return value.strip() if value else None
+    """Return the key loaded from the ignored `.env` file or the process environment."""
+    return resolve_openai_api_key()
 
 
 def workflow_stages() -> list[dict[str, str]]:
@@ -556,7 +1091,7 @@ elif (
     activate_application(next(iter(st.session_state["application_runs"])))
 
 
-st.title("Insurance Canonical Model platform")
+st.title("Canonical Model platform")
 
 CRAWLER_TAB_LABELS = [
     ":material/account_tree: 1 Discovery",
@@ -567,9 +1102,12 @@ CRAWLER_TAB_LABELS = [
 ACORD_TAB_LABELS = [
     ":material/library_books: ACORD ingestion",
     ":material/compare_arrows: ACORD alignment",
-    ":material/hub: Canonical view",
+    ":material/hub: Canonical model",
 ]
 WORKFLOW_TAB_LABELS = CRAWLER_TAB_LABELS + ACORD_TAB_LABELS
+
+if st.session_state.get("workflow_tabs") == ":material/hub: Canonical view":
+    st.session_state["workflow_tabs"] = ACORD_TAB_LABELS[2]
 
 
 def open_crawler_workspace() -> None:
@@ -600,7 +1138,37 @@ def open_crawler_tab() -> None:
 
 with st.sidebar:
     current_workspace = st.session_state.get("workflow_tabs", CRAWLER_TAB_LABELS[0])
-    st.caption("Crawler code")
+
+    # ── Branded header ────────────────────────────────────────────────────────
+    st.html("""
+<div style="padding:22px 4px 0;text-align:center">
+  <div style="width:56px;height:56px;
+              background:linear-gradient(135deg,#dbeafe,#eff6ff);
+              border:1.5px solid #bfdbfe;border-radius:16px;
+              display:inline-flex;align-items:center;justify-content:center;
+              font-size:26px;margin-bottom:12px;
+              box-shadow:0 2px 10px rgba(37,99,235,.12)">🏗️</div>
+  <div style="color:#1e293b;font-size:1.0rem;font-weight:700;font-family:system-ui;
+              letter-spacing:-.01em;line-height:1.3">Canonical<br>Model Platform</div>
+  <div style="color:#64748b;font-size:.63rem;margin-top:5px;
+              font-family:system-ui;letter-spacing:.08em;text-transform:uppercase">
+    v1.0 &ensp;·&ensp; Phase 1 MVP
+  </div>
+</div>
+<div style="border-top:1px solid #e2e8f0;margin:18px 0 6px"></div>
+""")
+
+    # ── Crawler section ───────────────────────────────────────────────────────
+    st.html("""
+<div style="display:flex;align-items:center;gap:8px;margin:6px 2px 4px">
+  <span style="font-size:14px">🔍</span>
+  <span style="color:#334155;font-size:.72rem;font-weight:700;
+               text-transform:uppercase;letter-spacing:.1em;font-family:system-ui">
+    Crawler Workflow
+  </span>
+  <div style="flex:1;height:1px;background:#e2e8f0"></div>
+</div>
+""")
     st.pills(
         "Crawler workspace",
         CRAWLER_TAB_LABELS,
@@ -609,7 +1177,18 @@ with st.sidebar:
         on_change=open_crawler_workspace,
         label_visibility="collapsed",
     )
-    st.caption("ACORD view")
+
+    # ── ACORD section ─────────────────────────────────────────────────────────
+    st.html("""
+<div style="display:flex;align-items:center;gap:8px;margin:18px 2px 4px">
+  <span style="font-size:14px">📋</span>
+  <span style="color:#334155;font-size:.72rem;font-weight:700;
+               text-transform:uppercase;letter-spacing:.1em;font-family:system-ui">
+    ACORD &amp; Canonical
+  </span>
+  <div style="flex:1;height:1px;background:#e2e8f0"></div>
+</div>
+""")
     st.pills(
         "ACORD workspace",
         ACORD_TAB_LABELS,
@@ -618,6 +1197,17 @@ with st.sidebar:
         on_change=open_acord_workspace,
         label_visibility="collapsed",
     )
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    st.html("""
+<div style="border-top:1px solid #e2e8f0;margin:22px 0 0;
+            padding:14px 4px 6px;text-align:center">
+  <div style="color:#94a3b8;font-size:.62rem;font-family:system-ui;
+              letter-spacing:.04em;line-height:1.6">
+    
+  </div>
+</div>
+""")
 
 if current_workspace in CRAWLER_TAB_LABELS:
     render_workflow_progress()
@@ -795,33 +1385,21 @@ with discovery_tab:
             "Relationship Graph, Validation and Enums, and Lineage."
         )
 
-        for start in range(0, len(DISCOVERY_ARTIFACTS), 3):
-            with st.container(horizontal=True):
-                for label in list(DISCOVERY_ARTIFACTS)[start : start + 3]:
-                    filename = DISCOVERY_ARTIFACTS[label]
-                    with st.container(border=True):
-                        st.badge("Generated", color="green", icon=":material/check:")
-                        st.markdown(f"**{label}**")
-                        st.download_button(
-                            "Download JSON",
-                            data=artifacts[label],
-                            file_name=filename,
-                            mime="application/json",
-                            icon=":material/download:",
-                            key=f"download_{filename}",
-                        )
-
-        st.download_button(
-            "Download all five artifacts",
-            data=build_artifact_bundle(artifacts),
-            file_name="discovery-artifacts.zip",
-            mime="application/zip",
-            type="primary",
-            icon=":material/folder_zip:",
-            key="download_all_discovery_artifacts",
-        )
-        preview_label = st.selectbox("Preview artifact", list(artifacts), key="artifact_preview")
-        st.json(json.loads(artifacts[preview_label]), expanded=2)
+        discovery_content, discovery_gallery = st.columns([2.2, 1], gap="large")
+        with discovery_content:
+            preview_label = st.selectbox(
+                "Preview artifact", list(artifacts), key="artifact_preview"
+            )
+            st.json(json.loads(artifacts[preview_label]), expanded=2)
+        with discovery_gallery:
+            render_artifact_download_gallery(
+                title="Discovery download gallery",
+                artifacts=artifacts,
+                filenames=DISCOVERY_ARTIFACTS,
+                key_prefix="download_discovery",
+                bundle=build_artifact_bundle(artifacts),
+                bundle_filename="discovery-artifacts.zip",
+            )
 
 with rag_tab:
     st.header("Repository RAG")
@@ -1012,15 +1590,12 @@ with rag_tab:
                 "Allow these selected, redacted code snippets to be sent to OpenAI.",
                 key="rag_semantic_consent",
             )
-            semantic_model = st.text_input(
-                "Interpretation model",
-                value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                key="rag_semantic_model",
-            )
+            semantic_model = resolve_openai_model()
+            st.caption(f"Interpretation model from .env: {semantic_model}")
             if st.button(
                 "Explain selected target" if target_id else "Explain retrieved code",
                 key="rag_explain_target",
-                disabled=not semantic_consent or not openai_api_key() or not semantic_model.strip(),
+                disabled=not semantic_consent or not openai_api_key(),
             ):
                 focused_index = None
                 try:
@@ -1034,7 +1609,7 @@ with rag_tab:
                         Path(st.session_state["rag_store_path"]), adapter
                     )
                     semantic_provider = OpenAISemanticProvider(
-                        api_key=openai_api_key() or "", model=semantic_model.strip()
+                        api_key=openai_api_key() or "", model=semantic_model
                     )
                     if target_id and st.session_state["discovery_model"]:
                         st.session_state["rag_semantics"] = inspect_retrieved_target(
@@ -1146,32 +1721,21 @@ with phase_two_tab:
             st.error(
                 "API Analyzer requires repository source; specification-only runs are disabled."
             )
-        configured_key = openai_api_key()
-        key_override = st.text_input(
-            "OpenAI API key (optional session override)",
-            type="password",
-            key="phase_2_key_override",
-            help=(
-                "Use this if the configured key is missing or rejected. "
-                "It stays in this browser session."
-            ),
-        )
-        api_key = key_override.strip() or configured_key
+        api_key = openai_api_key()
         if api_key:
             st.badge(
                 "API key available; checked when run starts", color="green", icon=":material/key:"
             )
         else:
             st.warning(
-                "Enter an API key above or set OPENAI_API_KEY. "
-                "The key is never written to an artifact.",
+                "Set OPENAI_API_KEY in the ignored .env file in the project root and restart "
+                "the app. The key is never written to an artifact.",
                 icon=":material/key:",
             )
-        openai_model = st.text_input(
-            "OpenAI model",
-            value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            help="The model must support Structured Outputs in the Responses API.",
-            key="phase_2_openai_model",
+        openai_model = resolve_openai_model()
+        st.caption(
+            f"OpenAI model from .env: {openai_model}. The model must support Structured "
+            "Outputs in the Responses API."
         )
         with st.expander("LLM usage guardrails"):
             max_run_tokens = st.number_input(
@@ -1210,7 +1774,8 @@ with phase_two_tab:
             )
             st.caption(
                 "The provider-reported input and output count for every completed request is "
-                "written to the enrichment report."
+                "written to the enrichment report and a separate JSON file under the sidebar "
+                "log location."
             )
         source_consent = st.checkbox(
             "Allow selected specification details and redacted code (when available) "
@@ -1231,8 +1796,6 @@ with phase_two_tab:
             missing.append("Provide an OpenAI API key.")
         if not source_consent:
             missing.append("Acknowledge source sharing above.")
-        if not openai_model.strip():
-            missing.append("Choose an interpretation model.")
         if missing:
             st.info("Before running: " + " ".join(missing))
         else:
@@ -1274,7 +1837,7 @@ with phase_two_tab:
             try:
                 provider = OpenAISemanticProvider(
                     api_key=api_key or "",
-                    model=openai_model.strip(),
+                    model=openai_model,
                     token_budget=TokenBudgetConfig(
                         max_run_tokens=int(max_run_tokens),
                         max_requests=int(max_llm_requests),
@@ -1598,37 +2161,24 @@ with regional_tab:
                 st.metric("Source attributes", field_count)
 
             with st.expander("Region-wide normalization settings", expanded=not entity_count):
-                regional_key_override = st.text_input(
-                    "OpenAI API key (optional session override)",
-                    type="password",
-                    key="regional_review_key",
-                )
-                regional_model = st.text_input(
-                    "Normalization model",
-                    value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                    key="regional_review_model",
-                )
+                regional_model = resolve_openai_model()
+                st.caption(f"Normalization model from .env: {regional_model}")
                 regional_consent = st.checkbox(
                     "Allow every entity, its attributes, and existing API Analyzer descriptions "
                     "in this region to be sent to OpenAI.",
                     key="regional_review_consent",
                 )
-                regional_api_key = regional_key_override.strip() or openai_api_key()
+                regional_api_key = openai_api_key()
                 if st.button(
                     "Normalize entire region",
                     icon=":material/auto_fix_high:",
                     type="primary",
                     key="normalize_entire_region",
-                    disabled=(
-                        not entity_count
-                        or not regional_consent
-                        or not regional_api_key
-                        or not regional_model.strip()
-                    ),
+                    disabled=(not entity_count or not regional_consent or not regional_api_key),
                 ):
                     provider = OpenAISemanticProvider(
                         api_key=regional_api_key or "",
-                        model=regional_model.strip(),
+                        model=regional_model,
                     )
                     progress = st.progress(0, text="Checking provider access")
                     try:
@@ -1679,91 +2229,96 @@ with regional_tab:
             if not entity_count:
                 st.info("No endpoint contract entities were discovered in this region.")
             else:
-                decisions: dict[str, dict] = {}
                 proposals = st.session_state["regional_normalizations"]
+
+                # Build flat row lists for compact comparative tables
+                entity_rows_meta: list[str] = []  # review_id per row
+                entity_rows_display: list[dict] = []
+                attr_rows_meta: list[tuple[str, str]] = []  # (review_id, field_id) per row
+                attr_rows_display: list[dict] = []
                 for branch in entire_region_tree:
-                    st.markdown(f"#### :material/api: {branch['api']}")
                     for model_branch in branch["models"]:
                         review_id = f"{branch['runId']}:{model_branch['id']}"
                         proposal = proposals.get(review_id, {})
-                        suggested_attributes = {
+                        suggested_attrs = {
                             item["attributeId"]: item for item in proposal.get("attributes", [])
                         }
-                        with st.expander(
-                            f":material/schema: {model_branch['name']} · "
-                            f"{len(model_branch['fields'])} fields"
-                        ):
-                            st.markdown(
-                                f"**AI entity suggestion:** "
-                                f"{proposal.get('normalizedName', 'Not normalized')}"
-                            )
-                            entity_choice = st.segmented_control(
-                                "Approved entity value",
-                                ["Original", "AI suggestion"],
-                                default="Original",
-                                key=f"entity_choice_{review_id}",
-                                disabled=not proposal,
-                            )
-                            entity_comment = st.text_input(
-                                "Optional entity review comment",
-                                key=f"entity_comment_{review_id}",
-                            )
-                            field_rows = []
-                            for field in model_branch["fields"]:
-                                suggested = suggested_attributes.get(field["id"], {})
-                                field_rows.append(
-                                    {
-                                        "Attribute ID": field["id"],
-                                        "Original": field["Field"],
-                                        "AI suggestion": suggested.get(
-                                            "normalizedName", "Not normalized"
-                                        ),
-                                        "Type": field["Type"],
-                                        "Approved value": "Original",
-                                        "Comment": "",
-                                    }
-                                )
-                            edited_fields = st.data_editor(
-                                field_rows,
-                                hide_index=True,
-                                width="stretch",
-                                key=f"field_review_{review_id}",
-                                disabled=[
-                                    "Attribute ID",
-                                    "Original",
-                                    "AI suggestion",
-                                    "Type",
-                                ],
-                                column_config={
-                                    "Attribute ID": None,
-                                    "Approved value": st.column_config.SelectboxColumn(
-                                        "Approved value",
-                                        options=["Original", "AI suggestion"],
-                                        required=True,
-                                    ),
-                                    "Comment": st.column_config.TextColumn(
-                                        "Optional reviewer comment"
-                                    ),
-                                },
-                            )
-                            decisions[review_id] = {
-                                "selection": entity_choice or "Original",
-                                "comment": entity_comment,
-                                "attributes": {
-                                    row["Attribute ID"]: {
-                                        "selection": row["Approved value"],
-                                        "comment": row["Comment"],
-                                    }
-                                    for row in edited_fields
-                                },
+                        entity_rows_meta.append(review_id)
+                        entity_rows_display.append(
+                            {
+                                "API": branch["api"],
+                                "Entity (original)": model_branch["name"],
+                                "Domain": model_branch.get("domain", "Awaiting API Analyzer"),
+                                "AI suggestion": proposal.get("normalizedName") or "—",
+                                "Approved": "Original",
+                                "Comment": "",
                             }
-                            if model_branch["mappings"]:
-                                st.markdown("**Endpoints involved**")
-                                st.dataframe(
-                                    model_branch["mappings"],
-                                    hide_index=True,
-                                    width="stretch",
-                                )
+                        )
+                        for field in model_branch["fields"]:
+                            suggested = suggested_attrs.get(field["id"], {})
+                            attr_rows_meta.append((review_id, field["id"]))
+                            attr_rows_display.append(
+                                {
+                                    "API": branch["api"],
+                                    "Entity": model_branch["name"],
+                                    "Attribute (original)": field["Field"],
+                                    "AI suggestion": suggested.get("normalizedName") or "—",
+                                    "Type": field["Type"],
+                                    "Approved": "Original",
+                                    "Comment": "",
+                                }
+                            )
+
+                st.markdown("##### Entities")
+                edited_entities = st.data_editor(
+                    entity_rows_display,
+                    hide_index=True,
+                    width="stretch",
+                    num_rows="fixed",
+                    key=f"entity_review_{selected_region}",
+                    disabled=["API", "Entity (original)", "Domain", "AI suggestion"],
+                    column_config={
+                        "Approved": st.column_config.SelectboxColumn(
+                            "Approved",
+                            options=["Original", "AI suggestion"],
+                            required=True,
+                        ),
+                        "Comment": st.column_config.TextColumn("Comment"),
+                    },
+                )
+                st.markdown("##### Attributes")
+                edited_attrs = st.data_editor(
+                    attr_rows_display,
+                    hide_index=True,
+                    width="stretch",
+                    num_rows="fixed",
+                    key=f"attribute_review_{selected_region}",
+                    disabled=["API", "Entity", "Attribute (original)", "AI suggestion", "Type"],
+                    column_config={
+                        "Approved": st.column_config.SelectboxColumn(
+                            "Approved",
+                            options=["Original", "AI suggestion"],
+                            required=True,
+                        ),
+                        "Comment": st.column_config.TextColumn("Comment"),
+                    },
+                )
+
+                # Rebuild decisions dict from flat table edits
+                decisions: dict[str, dict] = {}
+                for idx, review_id in enumerate(entity_rows_meta):
+                    row = edited_entities[idx]
+                    decisions[review_id] = {
+                        "selection": row["Approved"],
+                        "comment": row["Comment"],
+                        "attributes": {},
+                    }
+                for idx, (review_id, field_id) in enumerate(attr_rows_meta):
+                    row = edited_attrs[idx]
+                    decisions[review_id]["attributes"][field_id] = {
+                        "selection": row["Approved"],
+                        "comment": row["Comment"],
+                    }
 
                 st.divider()
                 st.markdown("#### Approve and generate regional artifacts")
@@ -1794,6 +2349,7 @@ with regional_tab:
                         "excel": render_regional_review_excel(approved_review),
                         "mermaid": render_regional_review_mermaid(approved_review),
                     }
+                    _save_regional_review(REGIONAL_REVIEWS_ROOT, selected_region, approved_review)
                     st.success("Regional view approved. Both artifacts are ready.")
 
                 approved = st.session_state["approved_regional_reviews"].get(selected_region)
@@ -1850,20 +2406,46 @@ with regional_tab:
                         )
 
 with acord_ingestion_tab:
-    st.header("ACORD ingestion")
+    _cur_acord_id = st.session_state.get("active_acord_id")
+    _has_index = bool(_cur_acord_id and st.session_state["acord_runs"].get(_cur_acord_id))
+    st.html(
+        _hero_banner(
+            icon="📦",
+            eyebrow="ACORD · RAG Pipeline",
+            title="ACORD Ingestion",
+            body=(
+                "Upload an authorized ACORD OpenAPI 3 document. "
+                "The pipeline deterministically extracts endpoints, recursively nested entities, "
+                "attributes, constraints, and JSON-pointer lineage "
+                "into a persistent local retrieval index for downstream alignment."
+            ),
+            accent="#6366f1",
+        )
+    )
+    st.html(
+        _pipeline_steps(
+            [
+                ("Parse OpenAPI", "done" if _has_index else "active", "1"),
+                ("Extract entities", "done" if _has_index else "pending", "2"),
+                ("Build RAG chunks", "done" if _has_index else "pending", "3"),
+                ("Index ready", "done" if _has_index else "pending", "✓"),
+            ]
+        )
+    )
     st.info(
-        "ACORD ingestion is a separate RAG pipeline. It is not step 5 of the regional API "
-        "pipeline, and it does not perform regional alignment or canonical generation.",
+        "Ingestion is a standalone pipeline — it does not perform alignment or "
+        "canonical generation and is not a numbered step in the regional workflow.",
         icon=":material/info:",
     )
-    st.caption(
-        "Upload an authorized ACORD OpenAPI 3 YAML/JSON document. The pipeline extracts API "
-        "endpoints, recursively nested entities and attributes, descriptions, $comment/vendor "
-        "notes, constraints, and source lineage into its own persistent retrieval index."
-    )
     acord_runs = st.session_state["acord_runs"]
+    acord_notice = st.session_state.pop("acord_delete_notice", None)
+    if acord_notice:
+        st.success(acord_notice, icon=":material/check:")
     if acord_runs:
-        with st.expander("Open a previous ACORD ingestion", expanded=False):
+        with st.expander(
+            f":material/history: Open a previous ACORD ingestion ({len(acord_runs)} saved)",
+            expanded=False,
+        ):
             saved_acord_id = st.selectbox(
                 "Saved ACORD reference",
                 list(acord_runs),
@@ -1874,17 +2456,31 @@ with acord_ingestion_tab:
                 ),
                 key="saved_acord_reference",
             )
-            if st.button(
-                "Open saved ACORD reference",
-                icon=":material/history:",
-                key="open_saved_acord_reference",
-            ):
-                st.session_state["active_acord_id"] = saved_acord_id
-                st.session_state["acord_results"] = []
-                st.rerun()
+            open_col, delete_col = st.columns(2, gap="small")
+            with open_col:
+                if st.button(
+                    "Open saved ACORD reference",
+                    icon=":material/history:",
+                    key="open_saved_acord_reference",
+                ):
+                    st.session_state["active_acord_id"] = saved_acord_id
+                    st.session_state["acord_results"] = []
+                    st.rerun()
+            with delete_col:
+                if st.button(
+                    "Delete ACORD ingestion",
+                    icon=":material/delete:",
+                    key="delete_saved_acord_reference",
+                    type="secondary",
+                ):
+                    st.session_state["pending_acord_deletion"] = saved_acord_id
+            if st.session_state.get("pending_acord_deletion") == saved_acord_id:
+                confirm_delete_acord(saved_acord_id)
 
     with st.container(border=True):
-        st.subheader("Reference details", anchor=False)
+        st.subheader(":material/library_books: New ACORD reference", anchor=False)
+        st.caption("Provide reference metadata and upload the approved ACORD specification.")
+        st.divider()
         reference_column, version_column = st.columns(2, gap="large")
         with reference_column:
             acord_label = st.text_input(
@@ -1909,9 +2505,10 @@ with acord_ingestion_tab:
         )
         selected_acord_file = acord_file or st.session_state.get("acord_document")
         if selected_acord_file is not None:
-            st.caption(
-                f"Selected specification: {selected_acord_file.name} · "
-                f"{len(selected_acord_file.getvalue()):,} bytes"
+            st.success(
+                f"Specification selected: **{selected_acord_file.name}** · "
+                f"{len(selected_acord_file.getvalue()):,} bytes",
+                icon=":material/attach_file:",
             )
         usage_authorized = st.checkbox(
             "I confirm that this ACORD document is approved for local ingestion and indexing.",
@@ -1965,76 +2562,78 @@ with acord_ingestion_tab:
         model = active_acord["model"]
         summary = model["summary"]
         stats = active_acord["manifest"]["stats"]
-        with st.container(border=True):
-            st.badge("ACORD RAG ready", color="green", icon=":material/check:")
-            profile = active_acord["profile"]
-            st.markdown(
-                f"**{profile['referenceLabel']}** · {profile['referenceVersion']} · "
-                f"{profile['sourceFile']}"
+        profile = active_acord["profile"]
+        tiles = "".join(
+            [
+                _stat_tile(summary["endpointCount"], "Endpoints", "#3b82f6"),
+                _stat_tile(summary["entityCount"], "Entities", "#8b5cf6"),
+                _stat_tile(summary["attributeCount"], "Attributes", "#06b6d4"),
+                _stat_tile(stats["chunksIndexed"], "RAG Chunks", "#f59e0b"),
+            ]
+        )
+        st.html(
+            _summary_card_html(
+                title=profile["referenceLabel"],
+                subtitle=(
+                    f"Version {profile['referenceVersion']}&ensp;&middot;&ensp;"
+                    f"{profile['sourceFile']}&ensp;&middot;&ensp;"
+                    f"Snapshot <code style='background:#f1f5f9;padding:2px 6px;"
+                    f"border-radius:4px;color:#475569;font-size:.78rem'>"
+                    f"{active_acord['manifest']['snapshotId'][:12]}</code>"
+                ),
+                pill_text="ACORD RAG READY",
+                pill_kind="success",
+                stat_tiles_html=tiles,
+                footer=(
+                    f"&#128192; Local Chroma index &ensp;&middot;&ensp;"
+                    f" Embedding: {stats['embedding']}"
+                ),
             )
-            metric_columns = st.columns(4)
-            metric_columns[0].metric("Endpoints", summary["endpointCount"])
-            metric_columns[1].metric("Entities", summary["entityCount"])
-            metric_columns[2].metric("Attributes", summary["attributeCount"])
-            metric_columns[3].metric("RAG chunks", stats["chunksIndexed"])
-            st.caption(
-                "Index: persistent local Chroma · "
-                f"Embedding: {stats['embedding']} · Snapshot: "
-                f"{active_acord['manifest']['snapshotId'][:12]}"
-            )
+        )
 
-        st.subheader("ACORD artifact tree")
-        st.markdown(
-            "ACORD OpenAPI → ACORD ingestion → API Catalog, Data Model, Relationship Graph, "
-            "Validation and Enums, and Lineage."
+        st.html(
+            _section_heading(
+                "ACORD Artifact Tree",
+                "ACORD OpenAPI → Ingestion → API Catalog, Data Model, Relationship Graph, "
+                "Validation &amp; Enums, and Lineage.",
+            )
         )
         acord_artifacts: dict[str, bytes] = active_acord["artifacts"]
-        for start in range(0, len(ACORD_ARTIFACTS), 3):
-            with st.container(horizontal=True):
-                for label in list(ACORD_ARTIFACTS)[start : start + 3]:
-                    filename = ACORD_ARTIFACTS[label]
-                    with st.container(border=True):
-                        st.badge("Generated", color="green", icon=":material/check:")
-                        st.markdown(f"**{label}**")
-                        st.download_button(
-                            "Download JSON",
-                            data=acord_artifacts[label],
-                            file_name=filename,
-                            mime="application/json",
-                            icon=":material/download:",
-                            key=f"download_acord_{active_acord_id}_{filename}",
-                        )
-        with st.container(horizontal=True):
-            st.download_button(
-                "Download all five artifacts",
-                data=build_acord_bundle(acord_artifacts),
-                file_name="acord-ingestion-artifacts.zip",
-                mime="application/zip",
-                type="primary",
-                icon=":material/folder_zip:",
-                key=f"download_all_acord_{active_acord_id}",
+        acord_content, acord_gallery = st.columns([2.2, 1], gap="large")
+        with acord_content:
+            acord_preview = st.selectbox(
+                "Preview ACORD artifact",
+                list(acord_artifacts),
+                key="acord_artifact_preview",
             )
-            st.download_button(
-                "Download RAG manifest",
-                data=(json.dumps(active_acord["manifest"], indent=2, sort_keys=True) + "\n").encode(
-                    "utf-8"
-                ),
-                file_name="acord-rag-manifest.json",
-                mime="application/json",
-                icon=":material/download:",
-                key=f"download_acord_manifest_{active_acord_id}",
+            st.json(json.loads(acord_artifacts[acord_preview]), expanded=2)
+        with acord_gallery:
+            render_artifact_download_gallery(
+                title="ACORD download gallery",
+                artifacts=acord_artifacts,
+                filenames=ACORD_ARTIFACTS,
+                key_prefix=f"download_acord_{active_acord_id}",
+                bundle=build_acord_bundle(acord_artifacts),
+                bundle_filename="acord-ingestion-artifacts.zip",
+                extra_downloads=[
+                    {
+                        "label": "Download RAG manifest",
+                        "data": (
+                            json.dumps(active_acord["manifest"], indent=2, sort_keys=True) + "\n"
+                        ).encode("utf-8"),
+                        "filename": "acord-rag-manifest.json",
+                        "mime": "application/json",
+                        "key": "rag_manifest",
+                    }
+                ],
             )
-        acord_preview = st.selectbox(
-            "Preview ACORD artifact",
-            list(acord_artifacts),
-            key="acord_artifact_preview",
-        )
-        st.json(json.loads(acord_artifacts[acord_preview]), expanded=2)
 
-        st.subheader("Inspect ACORD retrieval")
-        st.caption(
-            "Search the independent index to inspect the exact endpoint/entity chunks that a "
-            "later alignment agent would receive."
+        st.html(
+            _section_heading(
+                "Inspect ACORD Retrieval",
+                "Search the independent index to inspect the exact endpoint/entity chunks "
+                "that a later alignment agent would receive.",
+            )
         )
         with st.form("acord_retrieval", border=False):
             acord_query = st.text_input(
@@ -2060,173 +2659,674 @@ with acord_ingestion_tab:
                 st.code(result["text"], language="text")
 
 
-def _alignment_review_rows(
-    matches: list[dict[str, object]],
-    decisions: dict[str, dict[str, object]],
+def _alignment_decision_by_id(
+    decisions: dict[str, object], regional_id: str
+) -> dict[str, object] | None:
+    for section, child_key in (("entities", "attributes"), ("domains", "capabilities")):
+        parents = decisions.get(section, {})
+        if not isinstance(parents, dict):
+            continue
+        if regional_id in parents and isinstance(parents[regional_id], dict):
+            return parents[regional_id]
+        for parent in parents.values():
+            if not isinstance(parent, dict):
+                continue
+            children = parent.get(child_key, {})
+            if isinstance(children, dict) and isinstance(children.get(regional_id), dict):
+                return children[regional_id]
+    return None
+
+
+def _canonical_baseline_label(version: dict[str, object]) -> str:
+    artifact = version["artifact"]
+    if not isinstance(artifact, dict):
+        return f"v{version['version']}"
+    regions = artifact.get("regions") or [artifact.get("region", "Unknown")]
+    return f"v{version['version']} · {', '.join(str(item) for item in regions)}"
+
+
+def _decision_description(match: dict[str, object], decision: dict[str, object]) -> str:
+    candidate_by_selection = {
+        USE_BASELINE: match.get("baselineCandidate"),
+        USE_ACORD: match.get("acordCandidate"),
+        USE_GENERATED: match.get("generatedProposal"),
+    }
+    candidate = candidate_by_selection.get(decision.get("selection")) or {}
+    return str(
+        decision.get("reviewDescription")
+        or (candidate.get("description") if isinstance(candidate, dict) else "")
+        or match.get("regionalDescription")
+        or ""
+    )
+
+
+def _render_match_decision_controls(
     *,
-    child_key: str,
-) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    parent_rows: list[dict[str, object]] = []
-    child_rows: list[dict[str, object]] = []
-    for match in matches:
-        match_id = str(match["regionalId"])
-        decision = decisions[match_id]
-        candidate = match.get("acordCandidate") or {}
-        gaps = match.get("unmatchedDetails") or {}
-        parent_rows.append(
+    match: dict[str, object],
+    decision: dict[str, object],
+    label: str,
+    key_prefix: str,
+) -> None:
+    decision.setdefault("reviewStatus", match["status"])
+    decision.setdefault("reviewDescription", _decision_description(match, decision))
+    status_key = f"{key_prefix}_status"
+    description_key = f"{key_prefix}_description"
+    selection_key = f"{key_prefix}_selection"
+    reason_key = f"{key_prefix}_reason"
+    st.session_state.setdefault(status_key, decision["reviewStatus"])
+    st.session_state.setdefault(description_key, decision["reviewDescription"])
+    st.session_state.setdefault(selection_key, decision["selection"])
+    st.session_state.setdefault(reason_key, decision.get("reason", ""))
+
+    ctrl_col, res_col, reason_col = st.columns(3, gap="medium")
+    with ctrl_col:
+        review_status = st.radio(
+            "Review status",
+            MATCH_STATUSES,
+            key=status_key,
+            persist_state="session",
+        )
+    with res_col:
+        selection = st.selectbox(
+            "Canonical resolution",
+            ALIGNMENT_SELECTIONS,
+            key=selection_key,
+            persist_state="session",
+        )
+        review_description = st.text_area(
+            "Description",
+            key=description_key,
+            placeholder="Describe the match and the meaning retained in the canonical model.",
+            height=80,
+            persist_state="session",
+        )
+    with reason_col:
+        reason = st.text_area(
+            "Reviewer reason",
+            key=reason_key,
+            placeholder="Explain partial, unmatched, generated, or manual decisions.",
+            height=130,
+            persist_state="session",
+        )
+
+    decision.update(
+        {
+            "reviewStatus": review_status,
+            "reviewDescription": review_description,
+            "selection": selection,
+            "reason": reason,
+        }
+    )
+    if selection == MANUAL:
+        manual_name_key = f"{key_prefix}_manual_name"
+        manual_type_key = f"{key_prefix}_manual_type"
+        manual_constraints_key = f"{key_prefix}_manual_constraints"
+        st.session_state.setdefault(manual_name_key, decision.get("manualName", ""))
+        st.session_state.setdefault(manual_type_key, decision.get("manualType", ""))
+        st.session_state.setdefault(manual_constraints_key, decision.get("manualConstraints", "{}"))
+        manual_columns = st.columns(2, gap="large")
+        with manual_columns[0]:
+            manual_name = st.text_input(
+                f"{label} manual canonical name",
+                key=manual_name_key,
+                persist_state="session",
+            )
+            manual_type = st.text_input(
+                f"{label} manual type",
+                key=manual_type_key,
+                persist_state="session",
+            )
+        with manual_columns[1]:
+            manual_constraints = st.text_area(
+                f"{label} manual constraints (JSON object)",
+                key=manual_constraints_key,
+                persist_state="session",
+            )
+        decision.update(
             {
-                "ID": match_id,
-                "Regional": match["regionalName"],
-                "Regional description": match.get("regionalDescription") or "",
-                "ACORD candidate": candidate.get("name", "No candidate"),
-                "ACORD description": candidate.get("description", ""),
-                "ACORD comments": json.dumps(candidate.get("comments", [])),
-                "Status": match["status"],
-                "Match %": match["matchPercent"],
-                "Regional gaps": ", ".join(
-                    gaps.get("regionalAttributes", gaps.get("regionalCapabilities", []))
-                )
-                or "—",
-                "ACORD-only": ", ".join(
-                    gaps.get("acordAttributes", gaps.get("acordCapabilities", []))
-                )
-                or "—",
-                "Decision": decision["selection"],
-                "Manual canonical name": decision["manualName"],
-                "Reviewer reason": decision["reason"],
+                "manualName": manual_name,
+                "manualDescription": review_description,
+                "manualType": manual_type,
+                "manualConstraints": manual_constraints,
             }
         )
-        for child in match.get(child_key, []):
-            child_id = str(child["regionalId"])
-            child_decision = decision[child_key][child_id]
-            child_candidate = child.get("acordCandidate") or {}
-            child_rows.append(
-                {
-                    "Parent ID": match_id,
-                    "ID": child_id,
-                    "Parent": match["regionalName"],
-                    "Regional": child["regionalName"],
-                    "Regional type": child.get("regionalType", ""),
-                    "Regional description": child.get("regionalDescription") or "",
-                    "ACORD candidate": child_candidate.get("name", "No candidate"),
-                    "ACORD type": child_candidate.get("type", ""),
-                    "ACORD description": child_candidate.get("description", ""),
-                    "ACORD constraints": json.dumps(
-                        child_candidate.get("constraints", {}), sort_keys=True
-                    ),
-                    "Status": child["status"],
-                    "Match %": child["matchPercent"],
-                    "Decision": child_decision["selection"],
-                    "Manual canonical name": child_decision["manualName"],
-                    "Reviewer reason": child_decision["reason"],
-                }
+
+    approval_key = f"{key_prefix}_approved"
+    review_signature = sha256(
+        json.dumps(
+            {
+                "reviewStatus": decision["reviewStatus"],
+                "reviewDescription": decision["reviewDescription"],
+                "selection": decision["selection"],
+                "reason": decision["reason"],
+                "manualName": decision.get("manualName", ""),
+                "manualType": decision.get("manualType", ""),
+                "manualConstraints": decision.get("manualConstraints", "{}"),
+            },
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    previous_signature = decision.get("reviewSignature")
+    if previous_signature is not None and previous_signature != review_signature:
+        st.session_state[approval_key] = False
+    else:
+        st.session_state.setdefault(approval_key, bool(decision.get("approved", False)))
+    with st.container(border=True):
+        approved = st.checkbox(
+            f"Approve this {label.lower()} match",
+            key=approval_key,
+            help=(
+                "Changing the status, description, resolution, reason, or manual details "
+                "resets approval."
+            ),
+            persist_state="session",
+        )
+    decision.update(
+        {
+            "approved": approved,
+            "reviewSignature": review_signature,
+        }
+    )
+    if approved and _auto_fill_canonical_name(match, decision, key_prefix):
+        # Clear the signature so the signature-change guard doesn't reset this approval.
+        decision["reviewSignature"] = None
+
+
+def _render_match_evidence(match: dict[str, object], *, label: str) -> None:
+    baseline = match.get("baselineCandidate") or {}
+    acord = match.get("acordCandidate") or {}
+
+    regional_name = _html.escape(str(match.get("regionalName", "")))
+    regional_type = _html.escape(str(match.get("regionalType") or ""))
+    regional_desc = _html.escape(str(match.get("regionalDescription") or ""))
+
+    baseline_name = (
+        _html.escape(str(baseline.get("name", ""))) if isinstance(baseline, dict) else ""
+    )
+    baseline_pct = float(match.get("baselineMatchPercent") or 0)
+    baseline_desc = _html.escape(
+        str(baseline.get("description", "") if isinstance(baseline, dict) else "")
+    )
+
+    acord_name = _html.escape(str(acord.get("name", ""))) if isinstance(acord, dict) else ""
+    acord_type = _html.escape(str(acord.get("type", "") if isinstance(acord, dict) else ""))
+    acord_pct = float(match.get("matchPercent") or 0)
+    acord_desc = _html.escape(str(acord.get("description", "") if isinstance(acord, dict) else ""))
+
+    status = str(match.get("status", ""))
+    status_color, status_bg = {
+        FULL_MATCH: ("#166534", "#dcfce7"),
+        PARTIAL_MATCH: ("#92400e", "#fef3c7"),
+        NOT_MATCHED: ("#991b1b", "#fee2e2"),
+    }.get(status, ("#374151", "#f3f4f6"))
+
+    def _pct_bar(pct: float) -> str:
+        bar_color = "#22c55e" if pct >= 85 else "#f59e0b" if pct >= 55 else "#ef4444"
+        w = min(100, max(0, pct))
+        return (
+            f'<div style="display:flex;align-items:center;gap:7px;margin:5px 0 3px">'
+            f'<div style="flex:1;background:#e5e7eb;border-radius:4px;height:5px;overflow:hidden">'
+            f'<div style="width:{w}%;background:{bar_color};height:100%;border-radius:4px"></div>'
+            f"</div>"
+            f'<span style="font-size:11px;font-weight:700;color:{bar_color};white-space:nowrap">'
+            f"{pct:.1f}%</span></div>"
+        )
+
+    def _candidate_block(name: str, pct: float, desc: str, type_str: str = "") -> str:
+        if not name:
+            return (
+                '<div style="font-size:12px;color:#9ca3af;font-style:italic;padding:6px 0">'
+                "No candidate found</div>"
             )
-    return parent_rows, child_rows
+        type_pill = (
+            f'<span style="font-size:10px;background:#dbeafe;color:#1d4ed8;'
+            f'padding:1px 6px;border-radius:3px;margin-left:5px">{type_str}</span>'
+            if type_str
+            else ""
+        )
+        short_desc = (desc[:130] + "…") if len(desc) > 130 else desc
+        desc_html = (
+            f'<div style="font-size:11px;color:#6b7280;line-height:1.45;margin-top:3px">'
+            f"{short_desc}</div>"
+            if short_desc
+            else ""
+        )
+        return (
+            f'<div style="font-size:14px;font-weight:700;color:#1e3a5f">'
+            f"{name}{type_pill}</div>"
+            f"{_pct_bar(pct)}"
+            f"{desc_html}"
+        )
+
+    type_pill_regional = (
+        f'<span style="font-size:10px;background:#f3f4f6;color:#374151;'
+        f'padding:1px 7px;border-radius:4px;margin-left:7px;font-weight:500">'
+        f"{regional_type}</span>"
+        if regional_type
+        else ""
+    )
+    desc_regional = (
+        f'<div style="font-size:12px;color:#6b7280;margin-top:4px;line-height:1.45">'
+        f"{(regional_desc[:160] + '…') if len(regional_desc) > 160 else regional_desc}</div>"
+        if regional_desc
+        else ""
+    )
+
+    no_candidates_msg = (
+        ""
+        if (baseline_name or acord_name)
+        else '<div style="font-size:12px;color:#9ca3af;font-style:italic;padding:4px 0">No canonical baseline or ACORD candidate found.</div>'
+    )
+
+    card = f"""
+    <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:10px;font-family:system-ui,sans-serif">
+      <div style="background:#f8fafc;padding:11px 15px;border-bottom:1px solid #e5e7eb">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:3px">Regional {_html.escape(label)}</div>
+        <div style="font-size:16px;font-weight:800;color:#111827">{regional_name}{type_pill_regional}</div>
+        {desc_regional}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e5e7eb">
+        <div style="padding:11px 15px;border-right:1px solid #e5e7eb">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:6px">Canonical Baseline</div>
+          {_candidate_block(baseline_name, baseline_pct, baseline_desc)}
+        </div>
+        <div style="padding:11px 15px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:6px">ACORD Candidate</div>
+          {_candidate_block(acord_name, acord_pct, acord_desc, acord_type)}
+        </div>
+      </div>
+      {no_candidates_msg}
+      <div style="padding:8px 15px;display:flex;align-items:center;gap:8px;background:#fafafa">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af">Proposed</span>
+        <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;color:{status_color};background:{status_bg}">{_html.escape(status)}</span>
+      </div>
+    </div>
+    """
+    st.html(card)
 
 
-def _render_alignment_editor(
+def _alignment_tree_review_nodes(
+    *,
+    matches: list[dict[str, object]],
+    decisions: dict[str, dict[str, object]],
+    child_key: str,
+    statuses: set[str],
+    context: str,
+) -> list[tuple[dict[str, object], dict[str, object], str]]:
+    nodes: list[tuple[dict[str, object], dict[str, object], str]] = []
+    for parent in matches:
+        parent_id = str(parent["regionalId"])
+        decision = decisions[parent_id]
+        if parent["status"] in statuses:
+            nodes.append((parent, decision, f"{context}_{parent_id}"))
+        for child in parent.get(child_key, []):
+            if child["status"] not in statuses:
+                continue
+            child_id = str(child["regionalId"])
+            nodes.append(
+                (
+                    child,
+                    decision[child_key][child_id],
+                    f"{context}_{parent_id}_{child_id}",
+                )
+            )
+    return nodes
+
+
+def _decision_needs_reviewer_reason(match: dict[str, object], decision: dict[str, object]) -> bool:
+    review_status = decision.get("reviewStatus", match["status"])
+    return (
+        review_status != FULL_MATCH
+        or review_status != match["status"]
+        or decision.get("selection") in {MANUAL, USE_GENERATED}
+    )
+
+
+def _auto_fill_canonical_name(
+    match: dict[str, object], decision: dict[str, object], key_prefix: str
+) -> bool:
+    """When approving a node with no available standard candidate, default the canonical name to the
+    regional name so the approval is self-contained without requiring manual text entry."""
+    regional_name = str(match.get("regionalName", "")).strip()
+    if not regional_name:
+        return False
+    if decision.get("selection") == USE_ACORD and not match.get("acordCandidate"):
+        decision["selection"] = MANUAL
+        # Pop instead of assign: safe whether the widget is already rendered or not.
+        # On the next rerun the setdefault in _render_match_decision_controls re-syncs from decision.
+        st.session_state.pop(f"{key_prefix}_selection", None)
+        if not str(decision.get("manualName", "")).strip():
+            decision["manualName"] = regional_name
+            st.session_state[f"{key_prefix}_manual_name"] = regional_name
+        return True
+    if decision.get("selection") == MANUAL and not str(decision.get("manualName", "")).strip():
+        decision["manualName"] = regional_name
+        # manual_name widget is rendered when selection == MANUAL, so pop rather than assign.
+        st.session_state.pop(f"{key_prefix}_manual_name", None)
+        return True
+    return False
+
+
+def _approve_filtered_alignment_tree(
+    matches: list[dict[str, object]],
+    decisions: dict[str, dict[str, object]],
+    child_key: str,
+    statuses: set[str],
+    context: str,
+    reason_key: str,
+    result_key: str,
+) -> None:
+    reason = str(st.session_state.get(reason_key, "")).strip()
+    nodes = _alignment_tree_review_nodes(
+        matches=matches,
+        decisions=decisions,
+        child_key=child_key,
+        statuses=statuses,
+        context=context,
+    )
+    for match, decision, key_prefix in nodes:
+        # Auto-fill before reason check so a selection change to MANUAL also gets a reason applied.
+        _auto_fill_canonical_name(match, decision, key_prefix)
+        if (
+            _decision_needs_reviewer_reason(match, decision)
+            and not str(decision.get("reason", "")).strip()
+        ):
+            decision["reason"] = reason
+            st.session_state[f"{key_prefix}_reason"] = reason
+        decision["approved"] = True
+        # Preserve this batch action on the next render. Later field edits still invalidate it.
+        decision["reviewSignature"] = None
+        st.session_state[f"{key_prefix}_approved"] = True
+    st.session_state[result_key] = len(nodes)
+
+
+def _render_alignment_gap_llm_button(
+    *,
+    match: dict[str, object],
+    decision: dict[str, object],
+    kind_and_path: str,
+    gap_context: str,
+    key_prefix: str,
+) -> None:
+    """Inline LLM proposal button for a single NOT_MATCHED item."""
+    item_id = str(match["regionalId"])
+    st.divider()
+    st.caption(":material/auto_awesome: Generate a standard name and description with LLM")
+    gap_model = resolve_openai_model()
+    st.caption(f"Model from .env: {gap_model}")
+    instructions = st.text_area(
+        "Description or constraint instructions (optional)",
+        placeholder="Describe required terminology or evidence-backed constraints.",
+        key=f"{key_prefix}_gap_instructions",
+    )
+    consent_col, btn_col = st.columns([3, 2], vertical_alignment="bottom")
+    with consent_col:
+        gap_consent = st.checkbox(
+            "Allow this gap and instructions to be sent to OpenAI.",
+            key=f"{key_prefix}_gap_consent",
+        )
+    with btn_col:
+        if st.button(
+            "Generate standard with LLM",
+            icon=":material/auto_awesome:",
+            disabled=not gap_consent or not openai_api_key(),
+            key=f"{key_prefix}_gap_generate",
+        ):
+            try:
+                provider = OpenAICanonicalGapProvider(
+                    api_key=openai_api_key() or "",
+                    model=gap_model,
+                )
+                generated = provider.generate(
+                    {
+                        "promptVersion": "canonical-gap-v1",
+                        "kindAndPath": kind_and_path,
+                        "regionalItem": {
+                            key: value
+                            for key, value in match.items()
+                            if key
+                            in {
+                                "regionalId",
+                                "regionalName",
+                                "regionalDescription",
+                                "regionalType",
+                                "required",
+                            }
+                        },
+                        "baselineCandidate": match.get("baselineCandidate"),
+                        "acordCandidate": match.get("acordCandidate"),
+                        "reviewerInstructions": instructions.strip(),
+                    }
+                )
+                st.session_state["canonical_gap_proposals"].setdefault(gap_context, {})[item_id] = (
+                    generated
+                )
+                decision["selection"] = USE_GENERATED
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+
+def _render_alignment_tree(
     *,
     title: str,
     matches: list[dict[str, object]],
     decisions: dict[str, dict[str, object]],
+    parent_label: str,
+    child_label: str,
+    child_key: str,
+    context: str,
+    gap_context: str,
+) -> None:
+    selected_statuses = st.pills(
+        f"Filter {parent_label.lower()} tree nodes by proposed status",
+        MATCH_STATUSES,
+        default=list(MATCH_STATUSES),
+        selection_mode="multi",
+        key=f"{context}_status_filter",
+    )
+    visible_statuses = set(selected_statuses or MATCH_STATUSES)
+    visible_matches = [
+        item
+        for item in matches
+        if item["status"] in visible_statuses
+        or any(child["status"] in visible_statuses for child in item.get(child_key, []))
+    ]
+    st.markdown(f"#### {title}")
+    st.caption(
+        f"Expand a {parent_label.lower()} node to see its filtered {child_label.lower()} children. "
+        "Open Review only for the node you want to inspect, so the full tree stays compact."
+    )
+    if not visible_matches:
+        st.info("No results match the selected status filter.")
+        return
+
+    for index, parent in enumerate(visible_matches):
+        parent_id = str(parent["regionalId"])
+        decision = decisions[parent_id]
+        children = parent.get(child_key, [])
+        visible_children = [child for child in children if child["status"] in visible_statuses]
+        parent_is_visible = parent["status"] in visible_statuses
+        approval_label = "Approved" if decision.get("approved") is True else "Pending approval"
+        with st.expander(
+            (
+                f"{parent['regionalName']} · proposed {parent['status']} · "
+                f"{len(visible_children)} shown · {approval_label}"
+            ),
+            expanded=index == 0,
+            icon=":material/account_tree:" if parent_label == "Entity" else ":material/category:",
+        ):
+            if parent_is_visible:
+                parent_summary, parent_action = st.columns([5, 1.2], vertical_alignment="center")
+                with parent_summary:
+                    st.markdown(
+                        f"**{parent_label} node** · reviewed "
+                        f"`{decision.get('reviewStatus', parent['status'])}` · {approval_label}"
+                    )
+                with parent_action:
+                    with st.popover(
+                        f"Review {parent_label.lower()}",
+                        icon=":material/rate_review:",
+                        width="stretch",
+                        key=f"{context}_{parent_id}_review",
+                    ):
+                        _render_match_evidence(parent, label=parent_label)
+                        _render_match_decision_controls(
+                            match=parent,
+                            decision=decision,
+                            label=parent_label,
+                            key_prefix=f"{context}_{parent_id}",
+                        )
+                        if parent["status"] == NOT_MATCHED:
+                            _render_alignment_gap_llm_button(
+                                match=parent,
+                                decision=decision,
+                                kind_and_path=f"{parent_label} · {parent['regionalName']}",
+                                gap_context=gap_context,
+                                key_prefix=f"{context}_{parent_id}",
+                            )
+            else:
+                st.caption(
+                    "Parent shown for context; its proposed status is outside the active filter."
+                )
+
+            st.markdown(f"##### {child_label} children")
+            if not visible_children:
+                st.info(f"No {child_label.lower()} children match the active filter.")
+                continue
+            for child in visible_children:
+                child_id = str(child["regionalId"])
+                child_decision = decision[child_key][child_id]
+                child_approval = (
+                    "Approved" if child_decision.get("approved") is True else "Pending approval"
+                )
+                with st.container(border=True, gap="small"):
+                    child_summary, child_action = st.columns([5, 1.2], vertical_alignment="center")
+                    with child_summary:
+                        child_type = str(child.get("regionalType") or "")
+                        type_label = f" · `{child_type}`" if child_type else ""
+                        st.markdown(
+                            ":material/subdirectory_arrow_right: "
+                            f"**{child['regionalName']}**{type_label} · proposed "
+                            f"`{child['status']}` · {child_approval}"
+                        )
+                    with child_action:
+                        with st.popover(
+                            "Review",
+                            icon=":material/edit_note:",
+                            width="stretch",
+                            key=f"{context}_{parent_id}_{child_id}_review",
+                        ):
+                            _render_match_evidence(child, label=child_label)
+                            _render_match_decision_controls(
+                                match=child,
+                                decision=child_decision,
+                                label=child_label,
+                                key_prefix=f"{context}_{parent_id}_{child_id}",
+                            )
+                            if child["status"] == NOT_MATCHED:
+                                _render_alignment_gap_llm_button(
+                                    match=child,
+                                    decision=child_decision,
+                                    kind_and_path=(
+                                        f"{child_label} · "
+                                        f"{parent['regionalName']}.{child['regionalName']}"
+                                    ),
+                                    gap_context=gap_context,
+                                    key_prefix=f"{context}_{parent_id}_{child_id}",
+                                )
+
+
+def _render_alignment_bulk_approval(
+    *,
+    matches: list[dict[str, object]],
+    decisions: dict[str, dict[str, object]],
+    parent_label: str,
     child_key: str,
     child_label: str,
     context: str,
 ) -> None:
-    selected_statuses = st.pills(
-        "Show match status",
-        MATCH_STATUSES,
-        default=[PARTIAL_MATCH, NOT_MATCHED],
-        selection_mode="multi",
-        key=f"{context}_status",
+    selected_statuses = set(st.session_state.get(f"{context}_status_filter") or MATCH_STATUSES)
+    review_nodes = _alignment_tree_review_nodes(
+        matches=matches,
+        decisions=decisions,
+        child_key=child_key,
+        statuses=selected_statuses,
+        context=context,
     )
-    visible_statuses = set(selected_statuses or MATCH_STATUSES)
-    visible_matches = [item for item in matches if item["status"] in visible_statuses]
-    parent_rows, child_rows = _alignment_review_rows(
-        visible_matches, decisions, child_key=child_key
+    approved = sum(decision.get("approved") is True for _, decision, _ in review_nodes)
+    reason_key = f"bulk_{parent_label.lower()}_approval_reason_{context}"
+    result_key = f"bulk_{parent_label.lower()}_approval_result_{context}"
+    reason_required = any(
+        _decision_needs_reviewer_reason(match, decision)
+        and not str(decision.get("reason", "")).strip()
+        for match, decision, _ in review_nodes
     )
-    st.markdown(f"#### {title}")
-    if not parent_rows:
-        st.info("No results match the selected status filter.")
-        return
-    st.caption(
-        "Unmatched and partial rows are selected initially. Choose the ACORD standard or enter "
-        "a manual canonical name. A reviewer reason is required for every non-full or manual "
-        "decision."
-    )
-    common_config = {
-        "ID": None,
-        "Parent ID": None,
-        "Decision": st.column_config.SelectboxColumn(options=[USE_ACORD, MANUAL], required=True),
-        "Match %": st.column_config.NumberColumn(format="%.1f%%"),
-    }
-    edited_parents = st.data_editor(
-        parent_rows,
-        hide_index=True,
-        width="stretch",
-        key=f"{context}_parents",
-        disabled=[
-            "ID",
-            "Regional",
-            "Regional description",
-            "ACORD candidate",
-            "ACORD description",
-            "ACORD comments",
-            "Status",
-            "Match %",
-            "Regional gaps",
-            "ACORD-only",
-        ],
-        column_config=common_config,
-    )
-    for row in edited_parents:
-        decisions[row["ID"]].update(
-            {
-                "selection": row["Decision"],
-                "manualName": row["Manual canonical name"],
-                "reason": row["Reviewer reason"],
-            }
+    with st.expander(
+        f"Approve filtered {parent_label} → {child_label} tree · {approved} of "
+        f"{len(review_nodes)} approved",
+        icon=":material/done_all:",
+    ):
+        st.caption(
+            f"The proposed-status filter in {parent_label} match results controls this batch "
+            "action. Existing per-node reasons are preserved."
         )
-    st.markdown(f"**{child_label} details and decisions**")
-    if not child_rows:
-        st.info(f"No {child_label.lower()} are present for these rows.")
-        return
-    edited_children = st.data_editor(
-        child_rows,
-        hide_index=True,
-        width="stretch",
-        key=f"{context}_children",
-        disabled=[
-            "Parent ID",
-            "ID",
-            "Parent",
-            "Regional",
-            "Regional type",
-            "Regional description",
-            "ACORD candidate",
-            "ACORD type",
-            "ACORD description",
-            "ACORD constraints",
-            "Status",
-            "Match %",
-        ],
-        column_config=common_config,
-    )
-    for row in edited_children:
-        decisions[row["Parent ID"]][child_key][row["ID"]].update(
-            {
-                "selection": row["Decision"],
-                "manualName": row["Manual canonical name"],
-                "reason": row["Reviewer reason"],
-            }
+        bulk_reason = st.text_area(
+            f"Bulk {parent_label.lower()} reviewer reason"
+            + (" (required)" if reason_required else " (optional)"),
+            key=reason_key,
+            placeholder=(
+                f"Explain why these filtered {parent_label.lower()} and "
+                f"{child_label.lower()} matches are acceptable."
+            ),
         )
+        confirmed = st.checkbox(
+            f"I reviewed the filter and want to approve all {len(review_nodes)} shown "
+            f"{parent_label.lower()}/{child_label.lower()} nodes.",
+            key=f"bulk_{parent_label.lower()}_approval_confirmed_{context}",
+        )
+        st.button(
+            f"Approve all filtered {parent_label.lower()} nodes",
+            icon=":material/done_all:",
+            disabled=(
+                not review_nodes or not confirmed or (reason_required and not bulk_reason.strip())
+            ),
+            key=f"bulk_{parent_label.lower()}_approval_{context}",
+            on_click=_approve_filtered_alignment_tree,
+            args=(
+                matches,
+                decisions,
+                child_key,
+                selected_statuses,
+                context,
+                reason_key,
+                result_key,
+            ),
+        )
+        approved_in_batch = st.session_state.pop(result_key, None)
+        if approved_in_batch is not None:
+            st.success(
+                f"Approved {approved_in_batch} filtered {parent_label.lower()}/"
+                f"{child_label.lower()} nodes."
+            )
 
 
 def render_acord_alignment() -> None:
-    st.header("ACORD alignment")
-    st.caption(
-        "Compare a regional catalog with an accepted ACORD reference, resolve each mapping, "
-        "and approve a separate canonical artifact without changing either source."
+    st.html(
+        _hero_banner(
+            icon="⚖️",
+            eyebrow="ACORD · Canonical Workflow",
+            title="ACORD Alignment",
+            body=(
+                "Compare a regional catalog with an accepted ACORD reference, "
+                "resolve each entity, attribute, domain, and capability mapping, "
+                "then approve a separate canonical artifact — "
+                "neither source catalog is modified."
+            ),
+            accent="#0ea5e9",
+            glow_right="rgba(14,165,233,.14)",
+            glow_left="rgba(99,102,241,.07)",
+        )
     )
     regions = sorted(
         {
@@ -2244,23 +3344,58 @@ def render_acord_alignment() -> None:
         )
         return
 
-    selection_columns = st.columns(2, gap="large")
-    with selection_columns[0]:
-        region = st.selectbox(
-            "Regional catalog",
-            regions,
-            format_func=lambda item: f"{item} · {REGIONS.get(item, item)}",
-            key="alignment_region",
+    canonical_versions = load_canonical_versions(CANONICAL_DATABASE)
+    versions_by_number = {item["version"]: item for item in canonical_versions}
+    with st.container(border=True):
+        st.html(
+            _section_heading(
+                "Alignment Configuration",
+                "Select the regional catalog, ACORD reference, and optional canonical baseline.",
+            )
         )
-    with selection_columns[1]:
-        acord_run_id = st.selectbox(
-            "ACORD reference",
-            list(acord_runs),
-            format_func=lambda item: (
-                f"{acord_runs[item]['profile']['referenceLabel']} · "
-                f"{acord_runs[item]['profile']['referenceVersion']} [{item[:6]}]"
-            ),
-            key="alignment_acord_reference",
+        selection_columns = st.columns(3, gap="large")
+        with selection_columns[0]:
+            region = st.selectbox(
+                "Regional catalog",
+                regions,
+                format_func=lambda item: f"{item} · {REGIONS.get(item, item)}",
+                key="alignment_region",
+            )
+        with selection_columns[1]:
+            acord_run_id = st.selectbox(
+                "ACORD reference",
+                list(acord_runs),
+                format_func=lambda item: (
+                    f"{acord_runs[item]['profile']['referenceLabel']} · "
+                    f"{acord_runs[item]['profile']['referenceVersion']} [{item[:6]}]"
+                ),
+                key="alignment_acord_reference",
+            )
+        with selection_columns[2]:
+            baseline_version = st.selectbox(
+                "Approved canonical baseline",
+                [*versions_by_number, None],
+                format_func=lambda item: (
+                    "No baseline · compare with ACORD only"
+                    if item is None
+                    else _canonical_baseline_label(versions_by_number[item])
+                ),
+                key="alignment_canonical_baseline",
+            )
+        if canonical_versions:
+            available_versions = ", ".join(f"v{item['version']}" for item in canonical_versions)
+            st.caption(
+                f":material/layers: Available immutable baselines: {available_versions}. "
+                "Newest listed first; every earlier version remains selectable."
+            )
+    canonical_baseline = (
+        versions_by_number[baseline_version]["artifact"] if baseline_version is not None else None
+    )
+    if canonical_baseline:
+        st.info(
+            f"v{baseline_version} is compared first. Only incomplete baseline matches "
+            "fall back to the selected ACORD reference; remaining gaps require reviewer input.",
+            icon=":material/account_tree:",
         )
 
     model_tree = regional_model_tree(st.session_state["application_runs"], region=region)
@@ -2282,30 +3417,138 @@ def render_acord_alignment() -> None:
             "Some domain/capability values still await API Analyzer and will require a manual "
             "alignment decision."
         )
-    proposal = propose_acord_alignment(
-        region=region,
-        regional_source=regional_source,
-        regional_domain_tree=domain_tree,
-        regional_endpoints=endpoint_rows,
-        acord_model=acord_runs[acord_run_id]["model"],
-        acord_run_id=acord_run_id,
-    )
-    digest = sha256(json.dumps(proposal, sort_keys=True).encode()).hexdigest()[:12]
-    context = f"{region}_{acord_run_id}_{digest}"
+    agent_inputs = {
+        "region": region,
+        "regional_source": regional_source,
+        "regional_domain_tree": domain_tree,
+        "regional_endpoints": endpoint_rows,
+        "acord_model": acord_runs[acord_run_id]["model"],
+        "acord_run_id": acord_run_id,
+        "canonical_baseline": canonical_baseline,
+        "baseline_version": baseline_version,
+    }
+    digest = alignment_input_digest(**agent_inputs)
+    run_id = f"alignment-{digest}"
+    agent_state = load_alignment_agent_state(ALIGNMENT_AGENT_DATABASE, run_id)
+    if agent_state is None:
+        try:
+            with st.status("Running Alignment Agent", expanded=True) as status:
+                agent_state = run_alignment_agent(
+                    ALIGNMENT_AGENT_DATABASE,
+                    run_id=run_id,
+                    progress=st.write,
+                    **agent_inputs,
+                )
+                status.update(
+                    label="Alignment Agent is ready for review",
+                    state="complete",
+                    expanded=False,
+                )
+        except AlignmentAgentError as exc:
+            st.error(f"Alignment Agent stopped at a recoverable checkpoint: {exc}")
+            st.info(
+                "The regional and ACORD inputs are saved in SQLite. Resume retries only the "
+                "failed graph node; completed nodes are not repeated.",
+                icon=":material/database:",
+            )
+            return
+    elif agent_state.get("status") != "awaiting_review":
+        st.warning(
+            "This Alignment Agent run stopped before review. Its input and completed node "
+            "state are available in SQLite.",
+            icon=":material/pause_circle:",
+        )
+        resume_col, reset_col = st.columns(2, gap="small")
+        with resume_col:
+            if st.button(
+                "Resume Alignment Agent",
+                icon=":material/play_arrow:",
+                key=f"resume_{run_id}",
+            ):
+                try:
+                    with st.status("Resuming Alignment Agent", expanded=True) as status:
+                        resume_alignment_agent(
+                            ALIGNMENT_AGENT_DATABASE,
+                            run_id,
+                            progress=st.write,
+                        )
+                        status.update(label="Alignment Agent resumed", state="complete")
+                    st.rerun()
+                except AlignmentAgentError as exc:
+                    st.error(f"Alignment Agent resume failed: {exc}")
+                    st.info(
+                        "If the run cannot be recovered, use **Reset alignment** to clear "
+                        "the checkpoint and re-run from the beginning with the same inputs.",
+                        icon=":material/info:",
+                    )
+        with reset_col:
+            if st.button(
+                "Reset alignment",
+                icon=":material/restart_alt:",
+                key=f"reset_{run_id}",
+                help="Clears the stuck checkpoint so the alignment runs from scratch.",
+            ):
+                purge_alignment_agent_run(ALIGNMENT_AGENT_DATABASE, run_id)
+                st.success("Alignment checkpoint cleared. Run the alignment again.")
+                st.rerun()
+        return
+
+    proposal = agent_state["proposal"]
+    context = run_id
+    for item_id, generated in st.session_state["canonical_gap_proposals"].get(context, {}).items():
+        proposal = attach_generated_gap_proposal(proposal, item_id, generated)
     decisions = st.session_state["acord_alignment_drafts"].setdefault(
-        context, default_alignment_decisions(proposal)
+        context, agent_state["decisions"]
     )
     summary = proposal["matchSummary"]
-    metrics = st.columns(5)
-    metrics[0].metric("Matched coverage", f"{summary['matchedPercent']:.1f}%")
-    metrics[1].metric("Unmatched", f"{summary['unmatchedPercent']:.1f}%")
-    metrics[2].metric("Full matches", summary["fullMatch"])
-    metrics[3].metric("Partial matches", summary["partialMatch"])
-    metrics[4].metric("Not matched", summary["notMatched"])
-    st.caption(
-        "Coverage weights full matches as 1 and partial matches as 0.5; approval requires an "
-        "explicit decision for every item."
+    _matched_pct = summary["matchedPercent"]
+    _acord_label = acord_runs[acord_run_id]["profile"]["referenceLabel"]
+    _ring_color = (
+        "#22c55e" if _matched_pct >= 75 else "#f59e0b" if _matched_pct >= 40 else "#ef4444"
     )
+    _align_tiles = "".join(
+        [
+            _stat_tile(f"{summary['unmatchedPercent']:.1f}%", "Unmatched", "#ef4444"),
+            _stat_tile(summary["fullMatch"], "Full Matches", "#3b82f6"),
+            _stat_tile(summary["partialMatch"], "Partial Matches", "#f59e0b"),
+            _stat_tile(summary["notMatched"], "Not Matched", "#8b5cf6"),
+        ]
+    )
+    _ring_html = _coverage_ring_html(_matched_pct)
+    st.html(f"""
+<div style="background:linear-gradient(135deg,#ffffff 0%,#f0f7ff 100%);
+            border:1px solid {_ring_color}44;border-radius:12px;padding:24px;margin:10px 0;
+            box-shadow:0 2px 12px rgba(37,99,235,.08)">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;
+              flex-wrap:wrap;gap:8px;margin-bottom:18px">
+    <div>
+      <h2 style="color:#1e293b;margin:0;font-size:1.25rem;font-weight:600;
+                 font-family:system-ui">Coverage Summary</h2>
+      <p style="color:#64748b;margin:5px 0 0;font-size:.83rem;font-family:system-ui">
+        Region: <strong style="color:#1e293b">{region}</strong>
+        &ensp;&middot;&ensp;ACORD: <strong style="color:#1e293b">{_acord_label}</strong>
+      </p>
+    </div>
+    {
+        _status_pill(
+            f"{_matched_pct:.1f}% MATCHED",
+            "success" if _matched_pct >= 75 else "warning" if _matched_pct >= 40 else "neutral",
+        )
+    }
+  </div>
+  <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+    {_ring_html}
+    <div style="display:flex;gap:12px;flex-wrap:wrap;flex:1">
+      {_align_tiles}
+    </div>
+  </div>
+  <p style="color:#64748b;font-size:.72rem;margin:16px 0 0;font-family:system-ui">
+    Coverage formula: full&nbsp;match&nbsp;=&nbsp;1.0
+    &ensp;&middot;&ensp;partial&nbsp;match&nbsp;=&nbsp;0.5
+    &ensp;&middot;&ensp;Approval requires an explicit decision for every item.
+  </p>
+</div>""")
+    st.divider()
 
     entity_tab, domain_tab = st.tabs(
         ["Regional entities and attributes", "Domains and capabilities"],
@@ -2313,56 +3556,189 @@ def render_acord_alignment() -> None:
         on_change="rerun",
     )
     with entity_tab:
-        _render_alignment_editor(
+        _render_alignment_tree(
             title="Entity match results",
             matches=proposal["entities"],
             decisions=decisions["entities"],
-            child_key="attributes",
+            parent_label="Entity",
             child_label="Attribute",
+            child_key="attributes",
             context=f"entity_{context}",
+            gap_context=context,
         )
     with domain_tab:
-        _render_alignment_editor(
+        _render_alignment_tree(
             title="Domain match results",
             matches=proposal["domains"],
             decisions=decisions["domains"],
-            child_key="capabilities",
+            parent_label="Domain",
             child_label="Capability",
+            child_key="capabilities",
             context=f"domain_{context}",
+            gap_context=context,
         )
+
+    entity_review_decisions = list(decisions["entities"].values())
+    attribute_review_decisions = [
+        attribute
+        for entity in entity_review_decisions
+        for attribute in entity.get("attributes", {}).values()
+    ]
+    domain_review_decisions = list(decisions["domains"].values())
+    capability_review_decisions = [
+        capability
+        for domain in domain_review_decisions
+        for capability in domain.get("capabilities", {}).values()
+    ]
+    entity_reviews = [*entity_review_decisions, *attribute_review_decisions]
+    domain_reviews = [*domain_review_decisions, *capability_review_decisions]
+    approved_entity_reviews = sum(item.get("approved") is True for item in entity_reviews)
+    approved_domain_reviews = sum(item.get("approved") is True for item in domain_reviews)
 
     st.divider()
     st.markdown("#### Approve canonical alignment")
+    st.progress(
+        approved_entity_reviews / len(entity_reviews) if entity_reviews else 1.0,
+        text=f"Entity and attribute approvals: {approved_entity_reviews} of {len(entity_reviews)}",
+    )
+    st.progress(
+        approved_domain_reviews / len(domain_reviews) if domain_reviews else 1.0,
+        text=f"Domain and capability approvals: {approved_domain_reviews} of {len(domain_reviews)}",
+    )
+    _render_alignment_bulk_approval(
+        matches=proposal["entities"],
+        decisions=decisions["entities"],
+        parent_label="Entity",
+        child_label="Attribute",
+        child_key="attributes",
+        context=f"entity_{context}",
+    )
+    _render_alignment_bulk_approval(
+        matches=proposal["domains"],
+        decisions=decisions["domains"],
+        parent_label="Domain",
+        child_label="Capability",
+        child_key="capabilities",
+        context=f"domain_{context}",
+    )
+
+    persist_alignment_decisions(ALIGNMENT_AGENT_DATABASE, run_id, decisions)
     errors = validate_alignment_decisions(proposal, decisions)
     if errors:
         st.error(f"{len(errors)} review decision(s) remain unresolved.")
-        st.markdown("\n".join(f"- {error}" for error in errors[:10]))
+        approval_errors = [error for error in errors if error.endswith("needs explicit approval")]
+        detail_errors = [error for error in errors if error not in approval_errors]
+        entity_detail_errors = [
+            e for e in detail_errors if e.startswith("Entity ") or e.startswith("Attribute ")
+        ]
+        domain_detail_errors = [
+            e for e in detail_errors if e.startswith("Domain ") or e.startswith("Capability ")
+        ]
+        other_detail_errors = [
+            e
+            for e in detail_errors
+            if e not in entity_detail_errors and e not in domain_detail_errors
+        ]
+        st.caption(
+            f"{len(approval_errors)} await explicit approval; {len(detail_errors)} need a "
+            "missing or invalid decision detail."
+        )
+        if any("needs a manual canonical name" in e for e in detail_errors):
+            st.caption(
+                "To fix a **manual canonical name** error: open the **Review** popover for "
+                "that item in the tree above, then either type a name into the "
+                "'manual canonical name' field or change the canonical resolution to a "
+                "different selection (e.g. Use ACORD or Use baseline)."
+            )
+        st.caption(f"Showing all {len(errors)} unresolved decisions below.")
+        with st.container(border=True, height=360):
+            if approval_errors:
+                st.markdown(f"**Awaiting explicit approval ({len(approval_errors)})**")
+                st.markdown("\n".join(f"- {error}" for error in approval_errors))
+            if entity_detail_errors:
+                st.markdown(
+                    f"**In the 'Regional entities and attributes' tab"
+                    f" — {len(entity_detail_errors)} item(s) to fix:**"
+                )
+                st.markdown("\n".join(f"- {error}" for error in entity_detail_errors))
+            if domain_detail_errors:
+                st.markdown(
+                    f"**In the 'Domains and capabilities' tab"
+                    f" — {len(domain_detail_errors)} item(s) to fix:**"
+                )
+                st.markdown("\n".join(f"- {error}" for error in domain_detail_errors))
+            if other_detail_errors:
+                st.markdown(f"**Other missing or invalid details ({len(other_detail_errors)})**")
+                st.markdown("\n".join(f"- {error}" for error in other_detail_errors))
     confirmed = st.checkbox(
         "I reviewed all entity, attribute, domain, and capability decisions and approve this "
         "canonical alignment.",
         key=f"alignment_confirmed_{context}",
     )
+    next_version = max((item["version"] for item in canonical_versions), default=0) + 1
+    if errors:
+        st.info(
+            "Submission is locked until every unresolved decision shown above is corrected.",
+            icon=":material/lock:",
+        )
+    elif not confirmed:
+        st.info(
+            f"All decisions are valid. Confirm the complete alignment to submit canonical "
+            f"v{next_version}.",
+            icon=":material/check_circle:",
+        )
+    else:
+        st.success(
+            f"Ready to save this approved alignment and append canonical v{next_version} to SQLite."
+        )
     if st.button(
-        "Approve alignment and generate canonical model",
+        f"Submit and save canonical v{next_version}",
         type="primary",
-        icon=":material/verified:",
+        icon=":material/publish:",
         disabled=bool(errors) or not confirmed,
         key=f"approve_alignment_{context}",
     ):
-        artifact = approve_acord_alignment(proposal, decisions)
-        alignment_id = uuid4().hex
-        save_alignment_artifact(ALIGNMENT_HISTORY_ROOT, alignment_id, artifact)
-        st.session_state["alignment_reviews"][alignment_id] = artifact
-        st.session_state["active_alignment_id"] = alignment_id
-        st.success("Approved. Open Canonical view to inspect the model and endpoints.")
+        try:
+            artifact = approve_acord_alignment(proposal, decisions)
+            alignment_id = uuid4().hex
+            save_alignment_artifact(ALIGNMENT_HISTORY_ROOT, alignment_id, artifact)
+            submitted = submit_canonical_version(
+                CANONICAL_DATABASE,
+                alignment_id=alignment_id,
+                artifact=artifact,
+                review=default_final_review(artifact),
+            )
+            st.session_state["alignment_reviews"][alignment_id] = artifact
+            st.session_state["active_alignment_id"] = alignment_id
+            st.session_state["submitted_canonical_version"] = submitted["version"]
+            st.success(
+                f"Canonical v{submitted['version']} was submitted and saved in SQLite. "
+                "It is now available in Version history and as an Approved canonical baseline."
+            )
+        except Exception as exc:  # Local persistence failures must remain operator-visible.
+            st.error(f"Canonical submission failed: {exc}")
 
 
 def render_canonical_view() -> None:
-    st.header("Canonical view")
-    st.caption(
-        "Inspect canonical entities and endpoints generated only from approved ACORD alignment "
-        "decisions."
+    st.html(
+        _hero_banner(
+            icon="🏛️",
+            eyebrow="Canonical Platform · Final Artifact",
+            title="Canonical Model",
+            body=(
+                "Inspect reviewer-approved regional alignment decisions. "
+                "Submit the reviewed model as an immutable versioned snapshot — "
+                "later regions can extend a submitted baseline through "
+                "baseline-first comparison before falling back to ACORD."
+            ),
+            accent="#22c55e",
+            glow_right="rgba(34,197,94,.12)",
+            glow_left="rgba(16,185,129,.06)",
+        )
     )
+    delete_notice = st.session_state.pop("alignment_delete_notice", None)
+    if delete_notice:
+        st.success(delete_notice)
     alignments = st.session_state["alignment_reviews"]
     if not alignments:
         st.info(
@@ -2386,17 +3762,51 @@ def render_canonical_view() -> None:
         ),
         key="approved_canonical_alignment",
     )
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button(
+            "Delete selected alignment",
+            icon=":material/delete:",
+            key=f"request_delete_alignment_{selected_id}",
+        ):
+            st.session_state["pending_alignment_deletion"] = selected_id
+    if st.session_state.get("pending_alignment_deletion") == selected_id:
+        confirm_delete_alignment(selected_id)
     st.session_state["active_alignment_id"] = selected_id
     artifact = alignments[selected_id]
     summary = artifact["summary"]
-    metrics = st.columns(5)
-    metrics[0].metric("Canonical entities", summary["canonicalEntities"])
-    metrics[1].metric("Attributes", summary["canonicalAttributes"])
-    metrics[2].metric("Domains", summary["canonicalDomains"])
-    metrics[3].metric("Capabilities", summary["canonicalCapabilities"])
-    metrics[4].metric("Endpoints", summary["canonicalEndpoints"])
-    entity_tab, endpoint_tab, mapping_tab = st.tabs(
-        ["Canonical model", "Canonical endpoints", "Approval mappings"],
+    _cv_ref = artifact.get("acordReference", {})
+    _cv_tiles = "".join(
+        [
+            _stat_tile(summary["canonicalEntities"], "Entities", "#3b82f6"),
+            _stat_tile(summary["canonicalAttributes"], "Attributes", "#8b5cf6"),
+            _stat_tile(summary["canonicalDomains"], "Domains", "#06b6d4"),
+            _stat_tile(summary["canonicalCapabilities"], "Capabilities", "#f59e0b"),
+            _stat_tile(summary["canonicalEndpoints"], "Endpoints", "#22c55e"),
+        ]
+    )
+    st.html(
+        _summary_card_html(
+            title=(
+                f"{artifact.get('region', '—')} &ensp;&middot;&ensp; "
+                f"{_cv_ref.get('referenceLabel', 'ACORD')} {_cv_ref.get('referenceVersion', '')}"
+            ),
+            subtitle=(
+                f"Alignment ID: <code style='background:#f1f5f9;padding:2px 6px;"
+                f"border-radius:4px;color:#475569;font-size:.78rem'>{selected_id[:12]}</code>"
+            ),
+            pill_text="APPROVED",
+            pill_kind="success",
+            stat_tiles_html=_cv_tiles,
+        )
+    )
+    st.divider()
+    entity_tab, endpoint_tab, review_tab, history_tab = st.tabs(
+        [
+            "Canonical entities",
+            "Canonical endpoints",
+            "Final review and submit",
+            "Version history",
+        ],
         key="canonical_result_tabs",
         on_change="rerun",
     )
@@ -2442,17 +3852,200 @@ def render_canonical_view() -> None:
             for endpoint in artifact["canonicalEndpoints"]
         ]
         st.dataframe(endpoint_rows, hide_index=True, width="stretch")
-    with mapping_tab:
-        st.dataframe(artifact["alignmentMappings"], hide_index=True, width="stretch")
-    st.download_button(
-        "Download approved canonical model",
-        data=(json.dumps(artifact, indent=2, sort_keys=True) + "\n").encode(),
-        file_name=f"{artifact['region'].lower()}-canonical-alignment.json",
-        mime="application/json",
-        type="primary",
-        icon=":material/download:",
-        key=f"download_canonical_alignment_{selected_id}",
-    )
+    with review_tab:
+        st.subheader("Review the entire canonical model", anchor=False)
+        st.caption(
+            "For every item, use the approved canonical value, keep the regional original, or "
+            "reject it from this submitted version. Submission always creates a new version."
+        )
+        review_key = f"final_canonical_review_{selected_id}"
+        review = st.session_state.setdefault(review_key, default_final_review(artifact))
+        mappings = {
+            (item["kind"], item["canonical"]): item
+            for item in artifact.get("alignmentMappings", [])
+        }
+
+        entity_rows = []
+        attribute_rows = []
+        for entity in artifact["canonicalModel"]["entities"]:
+            entity_mapping = mappings.get(("Entity", entity["name"]), {})
+            entity_rows.append(
+                {
+                    "ID": entity["id"],
+                    "Canonical entity": entity["name"],
+                    "Regional original": entity_mapping.get("regional", entity["name"]),
+                    "Description": entity.get("description"),
+                    "Action": review["entities"][entity["id"]],
+                }
+            )
+            for attribute in entity["attributes"]:
+                attribute_mapping = mappings.get(
+                    ("Attribute", f"{entity['name']}.{attribute['name']}"), {}
+                )
+                attribute_rows.append(
+                    {
+                        "ID": attribute["id"],
+                        "Entity": entity["name"],
+                        "Canonical attribute": attribute["name"],
+                        "Regional original": str(
+                            attribute_mapping.get("regional", attribute["name"])
+                        ).rsplit(".", 1)[-1],
+                        "Type": attribute["type"],
+                        "Required": attribute["required"],
+                        "Description": attribute.get("description"),
+                        "Constraints": json.dumps(attribute.get("constraints", {}), sort_keys=True),
+                        "Action": review["attributes"][attribute["id"]],
+                    }
+                )
+        edited_entities = st.data_editor(
+            entity_rows,
+            hide_index=True,
+            width="stretch",
+            disabled=["ID", "Canonical entity", "Regional original", "Description"],
+            column_config={
+                "Action": st.column_config.SelectboxColumn(options=list(REVIEW_ACTIONS))
+            },
+            key=f"final_entities_{selected_id}",
+        )
+        for row in edited_entities:
+            review["entities"][row["ID"]] = row["Action"]
+        with st.expander("Review attributes", expanded=True):
+            edited_attributes = st.data_editor(
+                attribute_rows,
+                hide_index=True,
+                width="stretch",
+                disabled=[
+                    "ID",
+                    "Entity",
+                    "Canonical attribute",
+                    "Regional original",
+                    "Type",
+                    "Required",
+                    "Description",
+                    "Constraints",
+                ],
+                column_config={
+                    "Action": st.column_config.SelectboxColumn(options=list(REVIEW_ACTIONS))
+                },
+                key=f"final_attributes_{selected_id}",
+            )
+            for row in edited_attributes:
+                review["attributes"][row["ID"]] = row["Action"]
+
+        domain_rows = []
+        capability_rows = []
+        for mapping in artifact.get("alignmentMappings", []):
+            if mapping["kind"] == "Domain":
+                domain_rows.append(
+                    {
+                        "Canonical domain": mapping["canonical"],
+                        "Regional original": mapping["regional"],
+                        "Action": review["domains"][mapping["canonical"]],
+                    }
+                )
+            elif mapping["kind"] == "Capability":
+                capability_rows.append(
+                    {
+                        "Canonical capability": mapping["canonical"],
+                        "Regional original": mapping["regional"],
+                        "Action": review["capabilities"][mapping["canonical"]],
+                    }
+                )
+        st.subheader("Domain and capability review", anchor=False)
+        edited_domains = st.data_editor(
+            domain_rows,
+            hide_index=True,
+            width="stretch",
+            disabled=["Canonical domain", "Regional original"],
+            column_config={
+                "Action": st.column_config.SelectboxColumn(options=list(REVIEW_ACTIONS))
+            },
+            key=f"final_domains_{selected_id}",
+        )
+        for row in edited_domains:
+            review["domains"][row["Canonical domain"]] = row["Action"]
+        edited_capabilities = st.data_editor(
+            capability_rows,
+            hide_index=True,
+            width="stretch",
+            disabled=["Canonical capability", "Regional original"],
+            column_config={
+                "Action": st.column_config.SelectboxColumn(options=list(REVIEW_ACTIONS))
+            },
+            key=f"final_capabilities_{selected_id}",
+        )
+        for row in edited_capabilities:
+            review["capabilities"][row["Canonical capability"]] = row["Action"]
+
+        st.markdown("#### Submit the complete model")
+        confirmed = st.checkbox(
+            "I reviewed the complete entity, attribute, domain, and capability model.",
+            key=f"final_review_confirmed_{selected_id}",
+        )
+        if st.button(
+            "Submit new canonical model version",
+            type="primary",
+            icon=":material/publish:",
+            disabled=not confirmed,
+            key=f"submit_canonical_version_{selected_id}",
+        ):
+            submitted = submit_canonical_version(
+                CANONICAL_DATABASE,
+                alignment_id=selected_id,
+                artifact=artifact,
+                review=review,
+            )
+            st.session_state["submitted_canonical_version"] = submitted["version"]
+            st.success(f"Canonical v{submitted['version']} was stored in SQLite.")
+
+    with history_tab:
+        versions = load_canonical_versions(CANONICAL_DATABASE)
+        if not versions:
+            st.info("No final canonical model version has been submitted yet.")
+        else:
+            version_number = st.selectbox(
+                "Submitted version",
+                [item["version"] for item in versions],
+                format_func=lambda item: f"v{item}",
+                key="submitted_canonical_version_selector",
+            )
+            version = next(item for item in versions if item["version"] == version_number)
+            submitted_summary = version["artifact"]["summary"]
+            version_metrics = st.columns(5)
+            version_metrics[0].metric("Entities", submitted_summary["canonicalEntities"])
+            version_metrics[1].metric("Attributes", submitted_summary["canonicalAttributes"])
+            version_metrics[2].metric("Domains", submitted_summary["canonicalDomains"])
+            version_metrics[3].metric("Capabilities", submitted_summary["canonicalCapabilities"])
+            version_metrics[4].metric("Endpoints", submitted_summary["canonicalEndpoints"])
+            st.caption(f"Submitted {version['createdAt']} · SQLite v{version_number}")
+            st.json(version["artifact"], expanded=2)
+            with st.container(horizontal=True):
+                st.download_button(
+                    "Download canonical JSON",
+                    data=(
+                        json.dumps(version["artifact"], indent=2, sort_keys=True) + "\n"
+                    ).encode(),
+                    file_name=f"canonical-model-v{version_number}.json",
+                    mime="application/json",
+                    icon=":material/download:",
+                    key=f"download_canonical_model_{version_number}",
+                )
+                st.download_button(
+                    "Download OpenAPI JSON",
+                    data=version["openapiJson"],
+                    file_name=f"canonical-openapi-v{version_number}.json",
+                    mime="application/json",
+                    icon=":material/download:",
+                    key=f"download_canonical_openapi_json_{version_number}",
+                )
+                st.download_button(
+                    "Download OpenAPI YAML",
+                    data=version["openapiYaml"],
+                    file_name=f"canonical-openapi-v{version_number}.yaml",
+                    mime="application/yaml",
+                    icon=":material/download:",
+                    key=f"download_canonical_openapi_yaml_{version_number}",
+                )
 
 
 with acord_alignment_tab:

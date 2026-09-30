@@ -101,11 +101,23 @@ OPENAI_API_KEY=your-approved-api-key
 OPENAI_MODEL=your-approved-model
 ```
 
-The `.env` file is ignored by Git. Do not commit API keys or place them in uploaded
-repositories. The UI requires explicit acknowledgement before specification details or bounded,
-redacted code context is sent to OpenAI. The API Analyzer tab also accepts a password-masked,
-session-only key override when the configured key is missing or rejected; it is not written to
-an artifact.
+Copy `.env.example` to `.env` and fill in both values. The `.env` file is ignored by Git.
+Do not commit API keys or place them in uploaded repositories.
+
+The application reads `OPENAI_API_KEY` and `OPENAI_MODEL` from the environment only; the
+project `.env` file is loaded at startup and overrides any exported value. There is no
+front-end field for either setting. The same two values are used by API Analyzer, focused RAG
+interpretation, optional OpenAI embeddings, regional normalization, and canonical-gap
+proposals. When `OPENAI_MODEL` is blank the application falls back to `gpt-4o-mini`. Edit
+`.env` and restart the application to change either value. The sidebar **OpenAI
+configuration** expander only reports whether a key was loaded and which model is active. The
+key is never written to an artifact or call log.
+
+Every OpenAI model or embedding request writes one JSON token-audit file under
+`.llm-logs/YYYY-MM-DD/`. Set `LLM_CALL_LOG_DIRECTORY` to use another local directory. Logs include
+the model, operation, completion status, provider request ID when available, estimated input tokens,
+and provider-reported input/output/total tokens. They exclude prompts, source snippets, generated
+content, API keys, and provider error messages. `.llm-logs/` is ignored by Git.
 
 ## 6. Run the Streamlit application
 
@@ -134,8 +146,8 @@ Run the three tabs in order:
 2. Open **Repository RAG** and build the repository index. Each build creates a fresh, isolated
    index for the currently selected upload.
 3. In **Phase 2 API Analyzer**, select the completed application by name, region, and repository
-   ZIP. Check its RAG status, provide a valid OpenAI key (or session override), choose the model,
-   and acknowledge source sharing. The page lists any missing requirements before enabling
+   ZIP. Check its RAG status, configure the shared sidebar OpenAI key, choose the model, and
+   acknowledge source sharing. The page lists any missing requirements before enabling
    **Run API Analyzer Agent**. After a completed or failed run, the same selected application
    shows **Run API Analyzer again for selected application**; no new upload is required.
 
@@ -228,9 +240,8 @@ Then upgrade pip and retry the editable installation.
 
 ### Phase 2 reports an authentication error
 
-Use the API Analyzer's session-only key override or replace `.env` with an active, approved
-`OPENAI_API_KEY`, then retry. Phase 1 Discovery and local Repository RAG remain usable without
-an OpenAI key.
+Set an active, approved `OPENAI_API_KEY` in `.env`, then restart the application and retry.
+Phase 1 Discovery and local Repository RAG remain usable without an OpenAI key.
 
 ### ACORD ingestion cannot build the local index
 
