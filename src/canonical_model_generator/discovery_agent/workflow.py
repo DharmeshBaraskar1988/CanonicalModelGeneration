@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from canonical_model_generator.discovery_agent.artifacts import generate_artifacts
 from canonical_model_generator.discovery_agent.model import DiscoveryModel, Summary
-from canonical_model_generator.discovery_agent.openapi import discover_openapi
+from canonical_model_generator.discovery_agent.openapi import discover_openapi, spec_schema_names
 from canonical_model_generator.discovery_agent.reconcile import reconcile
 from canonical_model_generator.discovery_agent.roslyn import extract_roslyn
 from canonical_model_generator.discovery_agent.yaml_config import discover_yaml_config
@@ -120,7 +120,11 @@ def _roslyn(state: DiscoveryState) -> DiscoveryState:
         return _event(state, "roslyn", "skipped")
     try:
         model = extract_roslyn(
-            Path(state["project"]), Path(state["repository"]), state["region"], state["system"]
+            Path(state["project"]),
+            Path(state["repository"]),
+            state["region"],
+            state["system"],
+            spec_schema_names(Path(state["openapi"])) if state["openapi"] else (),
         )
         return _event(state, "roslyn", "ok", roslyn_model=model)
     except Exception as exc:  # graph boundary converts failures to structured state

@@ -4,6 +4,15 @@ Last updated: 2026-09-30
 Current release: Phase 2 API Analyzer Agent  
 Overall status: In progress
 
+## Plan amendment - OpenAPI-guided code search (2026-09-30)
+
+Status: Complete on a compact fixture; real specification/repository run pending (NS-DISC-03).
+
+- [x] **NS-DISC-04a** Resolve external file `$ref`s by same-named component schema or opaque named model instead of failing.
+- [x] **NS-DISC-04b** Pass spec schema names to Roslyn as hints and retain matching project models.
+- [x] **NS-DISC-04c** Match relative spec paths as code-route suffixes and pair differently named request/response models by attribute overlap, including `data` envelopes.
+- [x] **NS-DISC-04d** Report spec-only, code-only, prefix-matched and envelope cases as diagnostics; fix stale references on spec-only entities.
+
 ## Plan amendment - Azure Function MediatR flow tracing (2026-09-30)
 
 Status: Complete for Azure Function endpoints using MediatR; verified on a synthetic fixture only.

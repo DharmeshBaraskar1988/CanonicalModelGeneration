@@ -36,6 +36,15 @@ def scope_to_endpoint_contract_models(model: DiscoveryModel) -> DiscoveryModel:
         if entity_id in candidates
     }
 
+    # Models named by the OpenAPI document that exist in code (evidence marker from Roslyn hints).
+    retained_ids.update(
+        item.subject_id
+        for item in result.evidence
+        if isinstance(item.observed_value, dict)
+        and item.observed_value.get("hint") == "openapi-schema"
+        and item.subject_id in candidates
+    )
+
     # Models the endpoint's handler flow touches (mapper endpoints, handler/mapper/client models).
     operation_ids = {operation.id for operation in result.operations}
     flow_edges: dict[str, set[str]] = {}

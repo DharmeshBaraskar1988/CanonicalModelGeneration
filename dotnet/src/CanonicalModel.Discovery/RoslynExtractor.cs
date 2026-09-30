@@ -10,7 +10,9 @@ namespace CanonicalModel.Discovery;
 
 public static class RoslynExtractor
 {
-    public static async Task<ExtractionResult> ExtractAsync(string projectPath)
+    public static async Task<ExtractionResult> ExtractAsync(
+        string projectPath,
+        IReadOnlyCollection<string>? hintTypes = null)
     {
         if (!File.Exists(projectPath))
         {
@@ -402,6 +404,20 @@ public static class RoslynExtractor
             }
         }
 
+        // Names taken from the OpenAPI document: a project model with the same name is part of the
+        // contract even when no endpoint trace reached it.
+        var hintSet = new HashSet<string>(hintTypes ?? [], StringComparer.OrdinalIgnoreCase);
+        var hinted = hintSet.Count == 0
+            ? []
+            : sourceTypes.Value
+                .Where(type => IsModelType(type) && hintSet.Contains(type.Name))
+                .OrderBy(type => FullName(type), StringComparer.Ordinal)
+                .ToArray();
+        foreach (var type in hinted)
+        {
+            referencedTypes.Add(type);
+        }
+
         ExpandReferencedTypes(referencedTypes);
         var types = referencedTypes
             .Where(type => type.Locations.Any(location => location.IsInSource))
@@ -432,7 +448,8 @@ public static class RoslynExtractor
             sources,
             operations.OrderBy(item => item.Route).ThenBy(item => item.Method).ToArray(),
             types,
-            diagnostics);
+            diagnostics,
+            hinted.Select(FullName).ToArray());
     }
 
     private static IEnumerable<INamedTypeSymbol> AllTypes(INamespaceSymbol root) =>

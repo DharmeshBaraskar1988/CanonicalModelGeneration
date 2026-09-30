@@ -87,6 +87,7 @@ def test_azure_function_mediator_flow_resolves_constants_models_and_handler_trai
     assert set(names_by_id.values()) == {
         "ClaimModel",
         "ClaimIBO",
+        "GeneralPartyModel_v3",
         "ItemIdInfoModel_v3",
         "LossEventModel_v3",
         "RestResponse",

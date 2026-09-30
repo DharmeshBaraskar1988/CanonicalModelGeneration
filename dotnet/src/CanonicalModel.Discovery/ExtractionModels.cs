@@ -60,7 +60,8 @@ public sealed record ExtractionResult(
     IReadOnlyList<SourceRecord> Sources,
     IReadOnlyList<OperationRecord> Operations,
     IReadOnlyList<TypeRecord> Types,
-    IReadOnlyList<DiagnosticRecord> Diagnostics);
+    IReadOnlyList<DiagnosticRecord> Diagnostics,
+    IReadOnlyList<string> HintedTypes);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true)]
 [JsonSerializable(typeof(ExtractionResult))]

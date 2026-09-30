@@ -23,7 +23,10 @@ internal static class Program
             return 2;
         }
 
-        var result = await RoslynExtractor.ExtractAsync(Path.GetFullPath(project));
+        var hintTypes = options.TryGetValue("--hint-types", out var hintFile)
+            ? JsonSerializer.Deserialize<string[]>(await File.ReadAllTextAsync(hintFile)) ?? []
+            : [];
+        var result = await RoslynExtractor.ExtractAsync(Path.GetFullPath(project), hintTypes);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
         await File.WriteAllTextAsync(
             output,

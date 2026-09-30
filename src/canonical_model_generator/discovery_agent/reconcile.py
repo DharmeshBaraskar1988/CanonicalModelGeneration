@@ -7,6 +7,7 @@ import re
 from canonical_model_generator.discovery_agent.model import (
     Diagnostic,
     DiscoveryModel,
+    Entity,
     RunMetadata,
     RunStatus,
     Severity,
@@ -23,6 +24,27 @@ def normalize_name(value: str) -> str:
 
 def normalize_route(value: str) -> str:
     return re.sub(r"\{([^}:]+):[^}]+\}", r"{\1}", value.rstrip("/").lower()) or "/"
+
+
+def _route_segments(route: str) -> list[str]:
+    return [
+        "{}" if segment.startswith("{") else segment
+        for segment in normalize_route(route).strip("/").split("/")
+        if segment
+    ]
+
+
+def _is_route_suffix(spec_route: str, code_route: str) -> bool:
+    """OpenAPI paths are usually relative to a server/base path the code route includes."""
+    spec, code = _route_segments(spec_route), _route_segments(code_route)
+    return bool(spec) and len(spec) <= len(code) and code[len(code) - len(spec) :] == spec
+
+
+def _attribute_overlap(left: Entity, right: Entity) -> float:
+    names_left = {normalize_name(item.name) for item in left.attributes}
+    names_right = {normalize_name(item.name) for item in right.attributes}
+    union = names_left | names_right
+    return len(names_left & names_right) / len(union) if union else 0.0
 
 
 def _remap_type_reference(type_ref, remap: dict[str, str]):
@@ -46,8 +68,113 @@ def reconcile(roslyn: DiscoveryModel, openapi: DiscoveryModel) -> DiscoveryModel
         (item.method, normalize_route(item.route)): item for item in result.operations
     }
 
+    # Pair operations first (exact route, else the spec path as a suffix of the code route), then
+    # use each pair to find the request/response model the spec and the code both mean, even when
+    # their names differ, and to see through `data` response envelopes.
+    matched: dict[str, object] = {}
+    claimed: set[str] = set()
+    for source_operation in sorted(
+        openapi.operations,
+        key=lambda item: (-len(_route_segments(item.route)), item.route, item.method),
+    ):
+        exact = operation_by_key.get(
+            (source_operation.method, normalize_route(source_operation.route))
+        )
+        candidates = (
+            [exact]
+            if exact is not None
+            else [
+                item
+                for item in result.operations
+                if item.method == source_operation.method
+                and item.id not in claimed
+                and _is_route_suffix(source_operation.route, item.route)
+            ]
+        )
+        if len(candidates) == 1:
+            matched[source_operation.id] = candidates[0]
+            claimed.add(candidates[0].id)
+            if exact is None:
+                diagnostics.append(
+                    Diagnostic(
+                        id=stable_id("diagnostic", "RECONCILE_ROUTE_PREFIX", source_operation.id),
+                        severity=Severity.INFO,
+                        code="RECONCILE_ROUTE_PREFIX",
+                        message=(
+                            f"OpenAPI {source_operation.method} {source_operation.route} matched "
+                            f"code route {candidates[0].route} "
+                            "(spec path is relative to a base path)"
+                        ),
+                        subject_ids=[candidates[0].id],
+                    )
+                )
+        elif len(candidates) > 1:
+            diagnostics.append(
+                Diagnostic(
+                    id=stable_id("diagnostic", "RECONCILE_ROUTE_AMBIGUOUS", source_operation.id),
+                    severity=Severity.WARNING,
+                    code="RECONCILE_ROUTE_AMBIGUOUS",
+                    message=(
+                        f"OpenAPI {source_operation.method} {source_operation.route} matches "
+                        f"{len(candidates)} code routes; not merged"
+                    ),
+                )
+            )
+
+    spec_entities = {item.id: item for item in openapi.entities}
+    code_entities = {item.id: item for item in result.entities}
+    pair_override: dict[str, Entity] = {}
+    envelope_inner: dict[str, str] = {}
+    pending_pairs: list[tuple[str | None, str | None]] = []
+    for source_operation in openapi.operations:
+        code_operation = matched.get(source_operation.id)
+        if code_operation is None:
+            continue
+        pending_pairs.append((source_operation.request_entity_id, code_operation.request_entity_id))
+        code_responses = {item.status_code: item for item in code_operation.responses}
+        for response in source_operation.responses:
+            counterpart = code_responses.get(response.status_code)
+            if counterpart is not None:
+                pending_pairs.append((response.entity_id, counterpart.entity_id))
+    seen_pairs: set[tuple[str, str]] = set()
+    while pending_pairs:
+        spec_id, code_id = pending_pairs.pop(0)
+        spec_entity, code_entity = spec_entities.get(spec_id), code_entities.get(code_id)
+        if spec_entity is None or code_entity is None or (spec_id, code_id) in seen_pairs:
+            continue
+        seen_pairs.add((spec_id, code_id))
+        if normalize_name(spec_entity.name) == normalize_name(code_entity.name):
+            continue
+        inner = next(
+            (
+                spec_entities[attribute.type.reference_id]
+                for attribute in spec_entity.attributes
+                if normalize_name(attribute.name) == "data"
+                and attribute.type.reference_id in spec_entities
+            ),
+            None,
+        )
+        best = max(
+            [item for item in (spec_entity, inner) if item is not None],
+            key=lambda item: _attribute_overlap(item, code_entity),
+        )
+        if _attribute_overlap(best, code_entity) < 0.5:
+            continue
+        pair_override[best.id] = code_entity
+        if best is not spec_entity:
+            envelope_inner[spec_entity.id] = best.id
+        code_attributes = {normalize_name(item.name): item for item in code_entity.attributes}
+        for attribute in best.attributes:
+            counterpart_attribute = code_attributes.get(normalize_name(attribute.name))
+            if counterpart_attribute is not None:
+                pending_pairs.append(
+                    (attribute.type.reference_id, counterpart_attribute.type.reference_id)
+                )
+
     for source_entity in openapi.entities:
-        target = entity_by_key.get(normalize_name(source_entity.name))
+        target = pair_override.get(source_entity.id) or entity_by_key.get(
+            normalize_name(source_entity.name)
+        )
         if target is None:
             result.entities.append(source_entity.model_copy(deep=True))
             continue
@@ -106,10 +233,22 @@ def reconcile(roslyn: DiscoveryModel, openapi: DiscoveryModel) -> DiscoveryModel
             )
 
     for source_operation in openapi.operations:
-        key = (source_operation.method, normalize_route(source_operation.route))
-        target = operation_by_key.get(key)
+        target = matched.get(source_operation.id)
         if target is None:
             result.operations.append(source_operation.model_copy(deep=True))
+            diagnostics.append(
+                Diagnostic(
+                    id=stable_id("diagnostic", "RECONCILE_SPEC_ONLY", source_operation.id),
+                    severity=Severity.WARNING,
+                    code="RECONCILE_SPEC_ONLY",
+                    message=(
+                        f"OpenAPI operation {source_operation.method} {source_operation.route} "
+                        f"({source_operation.name}) was not found in code; search the repository "
+                        f"for that route suffix and operation name"
+                    ),
+                    subject_ids=[source_operation.id],
+                )
+            )
             continue
         remap[source_operation.id] = target.id
         target.evidence_ids = sorted(set(target.evidence_ids + source_operation.evidence_ids))
@@ -152,7 +291,21 @@ def reconcile(roslyn: DiscoveryModel, openapi: DiscoveryModel) -> DiscoveryModel
             if match:
                 remap[response.id] = match.id
                 source_entity_id = remap.get(response.entity_id, response.entity_id)
-                if match.entity_id is None and source_entity_id:
+                inner_id = envelope_inner.get(response.entity_id)
+                if inner_id and remap.get(inner_id) == match.entity_id:
+                    diagnostics.append(
+                        Diagnostic(
+                            id=stable_id("diagnostic", "RECONCILE_ENVELOPE", match.id),
+                            severity=Severity.INFO,
+                            code="RECONCILE_ENVELOPE",
+                            message=(
+                                f"OpenAPI wraps the {target.name} HTTP {response.status_code} "
+                                f"payload in an envelope model; the code returns it directly"
+                            ),
+                            subject_ids=[target.id, match.entity_id],
+                        )
+                    )
+                elif match.entity_id is None and source_entity_id:
                     match.entity_id = source_entity_id
                 elif match.entity_id and source_entity_id and match.entity_id != source_entity_id:
                     diagnostics.append(
@@ -179,6 +332,40 @@ def reconcile(roslyn: DiscoveryModel, openapi: DiscoveryModel) -> DiscoveryModel
                 target.responses.append(retained)
                 remap[response.id] = retained.id
         target.responses.sort(key=lambda item: item.status_code)
+
+    # Spec-only entities/operations were copied before every merge was known; point their
+    # references at the merged code entities.
+    for entity in result.entities:
+        entity.base_entity_id = remap.get(entity.base_entity_id, entity.base_entity_id)
+        for attribute in entity.attributes:
+            attribute.type = _remap_type_reference(attribute.type, remap)
+    for operation in result.operations:
+        operation.request_entity_id = remap.get(
+            operation.request_entity_id, operation.request_entity_id
+        )
+        for parameter in operation.parameters:
+            parameter.type = _remap_type_reference(parameter.type, remap)
+        for response in operation.responses:
+            response.entity_id = remap.get(response.entity_id, response.entity_id)
+            response.type = _remap_type_reference(response.type, remap)
+
+    if openapi.operations:
+        for code_operation in result.operations:
+            if code_operation.id not in claimed and code_operation.id in {
+                item.id for item in roslyn.operations
+            }:
+                diagnostics.append(
+                    Diagnostic(
+                        id=stable_id("diagnostic", "RECONCILE_CODE_ONLY", code_operation.id),
+                        severity=Severity.INFO,
+                        code="RECONCILE_CODE_ONLY",
+                        message=(
+                            f"Code operation {code_operation.method} {code_operation.route} "
+                            f"is not described by the OpenAPI document"
+                        ),
+                        subject_ids=[code_operation.id],
+                    )
+                )
 
     result.sources = sorted(result.sources + openapi.sources, key=lambda item: item.id)
     result.evidence = sorted(

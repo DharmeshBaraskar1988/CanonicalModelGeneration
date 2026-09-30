@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -65,6 +65,20 @@ def discover_openapi(
     return _build_model(document, path, content, region, system, repository)
 
 
+def spec_schema_names(path: Path) -> list[str]:
+    """Schema names of an OpenAPI document, used as model-name hints for the code search."""
+    try:
+        document = (
+            json.loads(path.read_text(encoding="utf-8"))
+            if path.suffix.lower() == ".json"
+            else yaml.safe_load(path.read_bytes())
+        )
+        schemas = document.get("components", {}).get("schemas", {})
+        return sorted(str(name) for name in schemas)
+    except (OSError, ValueError, AttributeError, yaml.YAMLError):
+        return []
+
+
 def _build_model(
     document: dict[str, Any],
     path: Path,
@@ -95,6 +109,23 @@ def _build_model(
     relationships: list[Relationship] = []
     validations: list[ValidationRule] = []
     diagnostics: list[Diagnostic] = []
+    external_refs = sorted({ref for ref in _iter_refs(document) if not ref.startswith("#")})
+    if external_refs:
+        names = sorted({_external_reference_name(ref) for ref in external_refs})
+        unbundled = [name for name in names if name not in schemas]
+        diagnostics.append(
+            Diagnostic(
+                id=stable_id("diagnostic", "OPENAPI_EXTERNAL_REF", *names),
+                severity=Severity.WARNING if unbundled else Severity.INFO,
+                code="OPENAPI_EXTERNAL_REF",
+                message=(
+                    f"{len(external_refs)} external file reference(s) to {len(names)} schema(s); "
+                    f"{len(names) - len(unbundled)} resolved by name in components.schemas, "
+                    f"{len(unbundled)} kept as opaque named models"
+                    + (f": {', '.join(unbundled)}" if unbundled else "")
+                ),
+            )
+        )
 
     def trace(subject_id: str, pointer: str, value: Any) -> str:
         evidence_id = stable_id("evidence", source_id, subject_id, pointer)
@@ -321,7 +352,11 @@ def _resolve(schema: dict[str, Any], document: dict[str, Any]) -> dict[str, Any]
     if not reference:
         return schema
     if not reference.startswith("#/"):
-        raise ValueError(f"External OpenAPI reference is not supported: {reference}")
+        # File references such as `.\\Model_v3.yaml`: use the same-named component schema when
+        # the document bundles it; otherwise keep an opaque model so parsing can continue.
+        name = _external_reference_name(reference)
+        bundled = document.get("components", {}).get("schemas", {}).get(name)
+        return bundled if isinstance(bundled, dict) else {"type": "object", "x-external-ref": name}
     current: Any = document
     for token in reference[2:].split("/"):
         current = current[token.replace("~1", "/").replace("~0", "~")]
@@ -358,7 +393,27 @@ def _flatten_schema(
 
 def _reference_name(schema: dict[str, Any]) -> str | None:
     reference = schema.get("$ref")
-    return reference.rsplit("/", 1)[-1] if isinstance(reference, str) else None
+    if not isinstance(reference, str):
+        return None
+    if not reference.startswith("#"):
+        return _external_reference_name(reference)
+    return reference.rsplit("/", 1)[-1]
+
+
+def _external_reference_name(reference: str) -> str:
+    return PurePosixPath(reference.replace("\\", "/")).stem
+
+
+def _iter_refs(node: Any):
+    if isinstance(node, dict):
+        reference = node.get("$ref")
+        if isinstance(reference, str):
+            yield reference
+        for value in node.values():
+            yield from _iter_refs(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _iter_refs(value)
 
 
 def _type_ref(schema: dict[str, Any], reference_id: str | None) -> TypeRef:

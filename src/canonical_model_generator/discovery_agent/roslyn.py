@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -37,10 +38,22 @@ from canonical_model_generator.discovery_agent.model import (
 from canonical_model_generator.discovery_agent.view_model_scope import scope_to_endpoint_view_models
 
 
-def extract_roslyn(project: Path, repository: Path, region: str, system: str) -> DiscoveryModel:
+def extract_roslyn(
+    project: Path,
+    repository: Path,
+    region: str,
+    system: str,
+    hint_types: Sequence[str] = (),
+) -> DiscoveryModel:
+    """Run Roslyn; `hint_types` are model names from an OpenAPI document to look for in code."""
     sidecar = Path("dotnet/src/CanonicalModel.Discovery/CanonicalModel.Discovery.csproj").resolve()
     with tempfile.TemporaryDirectory(prefix="canonical-roslyn-") as directory:
         raw_path = Path(directory) / "roslyn.json"
+        hint_arguments: list[str] = []
+        if hint_types:
+            hint_path = Path(directory) / "hints.json"
+            hint_path.write_text(json.dumps(sorted(set(hint_types))), encoding="utf-8")
+            hint_arguments = ["--hint-types", str(hint_path)]
         process = subprocess.run(
             [
                 "dotnet",
@@ -52,6 +65,7 @@ def extract_roslyn(project: Path, repository: Path, region: str, system: str) ->
                 str(project.resolve()),
                 "--output",
                 str(raw_path),
+                *hint_arguments,
             ],
             check=False,
             capture_output=True,
@@ -162,9 +176,15 @@ def roslyn_to_model(
         )
         return evidence_id
 
+    hinted_types = set(raw.get("hintedTypes", []))
     for item in raw["types"]:
         type_id = type_ids[item["fullName"]]
         type_evidence = trace(type_id, item["location"], item["fullName"])
+        type_evidence_ids = [type_evidence]
+        if item["fullName"] in hinted_types:
+            type_evidence_ids.append(
+                trace(type_id, item["location"], {"hint": "openapi-schema", "name": item["name"]})
+            )
         if item["kind"] == "enum":
             enums.append(
                 EnumDefinition(
@@ -217,7 +237,7 @@ def roslyn_to_model(
                 original_name=item["name"],
                 attributes=attributes,
                 base_entity_id=base_entity_id,
-                evidence_ids=[type_evidence],
+                evidence_ids=type_evidence_ids,
             )
         )
         if base_entity_id:

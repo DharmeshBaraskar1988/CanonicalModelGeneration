@@ -1325,3 +1325,35 @@ model and the handler's response payload feed `ACCEPTS`/`RETURNS`.
 - Backend models and mapper relationships are visible to downstream agents with lineage.
 - Flow-touched models are not API contracts; consumers must use `ACCEPTS`/`RETURNS` for that.
 - Discovery remains deterministic; name-based type lookup can mis-resolve duplicate simple names.
+
+## ADR-051 - Use the OpenAPI document as a reference that guides the code search
+
+- Date: 2026-09-30
+- Status: Accepted; extends ADR-050 and the optional-OpenAPI rule of R1.10
+
+### Context
+
+Discovery takes the repository and, optionally, the OpenAPI YAML/JSON. The specification was parsed
+independently and merged afterwards by exact name/route. A real EU claims specification exposed
+three gaps: paths are relative (`/service/claims`) while code routes include a base path
+(`/eu/cor01sh01/svc/claim/v3/service/claims`); request/response schemas are named differently from
+the code models (`COR01SH01_Claim_v3_RequestModel` vs `ClaimModel`, wrapped in a `data` envelope);
+and schemas use external file references (`.\ItemIdInfoModel_v3.yaml`), which aborted parsing.
+
+### Decision
+
+When a specification is supplied, its schema names are passed to Roslyn as hints: a project model
+with the same name is retained as an endpoint-contract model (marked by `hint: openapi-schema`
+evidence) even if no endpoint trace reaches it. Reconciliation matches operations by exact route or
+by the spec path as a segment suffix of the code route, then pairs each operation's request/response
+models by attribute overlap (at least 0.5, seeing through a `data` envelope) so differently named
+models merge instead of duplicating. External file references resolve to a same-named component
+schema or become opaque named models with a warning. Spec-only operations (`RECONCILE_SPEC_ONLY`,
+with route/name to search for), code-only operations (`RECONCILE_CODE_ONLY`), prefix matches and
+envelopes are reported as diagnostics. Conflicts are still preserved, never overwritten.
+
+### Consequences
+
+- Names in the specification widen the deterministic search; nothing is inferred by an LLM.
+- Name-based hint matching can select the wrong class when simple names collide across projects.
+- External-file schemas are not loaded; they stay opaque unless bundled into `components.schemas`.

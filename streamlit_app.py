@@ -82,7 +82,10 @@ from canonical_model_generator.canonical_registry import (  # noqa: E402
 )
 from canonical_model_generator.discovery_agent.artifacts import generate_artifacts  # noqa: E402
 from canonical_model_generator.discovery_agent.model import DiscoveryModel  # noqa: E402
-from canonical_model_generator.discovery_agent.openapi import discover_openapi  # noqa: E402
+from canonical_model_generator.discovery_agent.openapi import (  # noqa: E402
+    discover_openapi,
+    spec_schema_names,
+)
 from canonical_model_generator.discovery_agent.reconcile import reconcile  # noqa: E402
 from canonical_model_generator.discovery_agent.roslyn import (  # noqa: E402
     extract_roslyn,
@@ -1094,12 +1097,9 @@ def run_uploaded_discovery(
             inventory.projects, inventory.controllers, inventory.azure_function_projects
         )
         if not selected_projects:
-            raise IntakeError("No non-test project owns the discovered controller or function files.")
-        roslyn_models = [
-            extract_roslyn(repository / project, repository, region.strip(), system.strip())
-            for project in selected_projects
-        ]
-        model = merge_roslyn_models(roslyn_models)
+            raise IntakeError(
+                "No non-test project owns the discovered controller or function files."
+            )
         openapi = None
         if openapi_file is not None:
             validate_openapi(openapi_file.getvalue(), openapi_file.name)
@@ -1108,6 +1108,15 @@ def run_uploaded_discovery(
             openapi.write_bytes(openapi_file.getvalue())
         elif inventory.openapi_candidates:
             openapi = repository / inventory.openapi_candidates[0]
+        # The specification's model names guide the code search as well as reconciliation.
+        hint_types = spec_schema_names(openapi) if openapi is not None else []
+        roslyn_models = [
+            extract_roslyn(
+                repository / project, repository, region.strip(), system.strip(), hint_types
+            )
+            for project in selected_projects
+        ]
+        model = merge_roslyn_models(roslyn_models)
 
         if openapi is None:
             if not model.operations and not model.entities:
@@ -2492,8 +2501,12 @@ with regional_tab:
 
                 _btn_ent_label = f"{n_direct_ent} entit{'y' if n_direct_ent == 1 else 'ies'}"
                 if n_via_attr:
-                    _btn_ent_label += f" + {n_via_attr} via {n_attr_sel} attr{'s' if n_attr_sel != 1 else ''}"
-                _btn_ep_label = f"{len(sel_endpoints)} endpoint{'s' if len(sel_endpoints) != 1 else ''}"
+                    _btn_ent_label += (
+                        f" + {n_via_attr} via {n_attr_sel} attr{'s' if n_attr_sel != 1 else ''}"
+                    )
+                _btn_ep_label = (
+                    f"{len(sel_endpoints)} endpoint{'s' if len(sel_endpoints) != 1 else ''}"
+                )
 
                 norm_model = resolve_openai_model()
                 st.caption(f"Normalization model from .env: {norm_model}")
@@ -2551,16 +2564,16 @@ with regional_tab:
                         selected_region,
                         {
                             "region": selected_region,
-                            "normalizations": dict(
-                                st.session_state["regional_normalizations"]
-                            ),
+                            "normalizations": dict(st.session_state["regional_normalizations"]),
                             "endpointNormalizations": dict(
                                 st.session_state["regional_endpoint_normalizations"]
                             ),
                             "decisions": _dec_snapshot,
                         },
                     )
-                    st.success("Draft saved — AI suggestions and decisions will reload on next page open.")
+                    st.success(
+                        "Draft saved — AI suggestions and decisions will reload on next page open."
+                    )
                 if _do_normalize:
                     norm_provider = OpenAISemanticProvider(
                         api_key=norm_api_key or "",
@@ -2633,15 +2646,15 @@ with regional_tab:
                                 ep_inventory,
                             )
                             done += 1
-                        norm_progress.progress(1.0, text="Normalization complete — auto-saving draft")
+                        norm_progress.progress(
+                            1.0, text="Normalization complete — auto-saving draft"
+                        )
                         _save_norm_draft(
                             REGIONAL_REVIEWS_ROOT,
                             selected_region,
                             {
                                 "region": selected_region,
-                                "normalizations": dict(
-                                    st.session_state["regional_normalizations"]
-                                ),
+                                "normalizations": dict(st.session_state["regional_normalizations"]),
                                 "endpointNormalizations": dict(
                                     st.session_state["regional_endpoint_normalizations"]
                                 ),
@@ -2683,15 +2696,14 @@ with regional_tab:
                         1 for r in edited_attrs if r.get("AI suggestion", "—") == "—"
                     )
                     ep_no_suggest = sum(
-                        1 for r in (edited_endpoints or [])
-                        if r.get("AI suggestion", "—") == "—"
+                        1 for r in (edited_endpoints or []) if r.get("AI suggestion", "—") == "—"
                     )
                     ent_no_domain = sum(
-                        1 for r in edited_entities
-                        if r.get("Domain") == "Awaiting API Analyzer"
+                        1 for r in edited_entities if r.get("Domain") == "Awaiting API Analyzer"
                     )
                     ep_no_domain = sum(
-                        1 for r in (edited_endpoints or [])
+                        1
+                        for r in (edited_endpoints or [])
                         if r.get("Domain") == "Awaiting API Analyzer"
                         or r.get("Capability") == "Awaiting API Analyzer"
                     )
@@ -2834,7 +2846,10 @@ with regional_tab:
                     attr_key_types: dict[tuple[str, str], set[str]] = {}
                     for ent_r in ent_mapping_rows:
                         for attr_r in attr_mapping_rows:
-                            if attr_r["API"] == ent_r["API"] and attr_r["Entity"] == ent_r["Original name"]:
+                            if (
+                                attr_r["API"] == ent_r["API"]
+                                and attr_r["Entity"] == ent_r["Original name"]
+                            ):
                                 combo = (ent_r["Effective name"], attr_r["Effective name"])
                                 attr_key_types.setdefault(combo, set()).add(attr_r["Type"])
                     type_mismatches = [
