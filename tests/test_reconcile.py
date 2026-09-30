@@ -200,3 +200,59 @@ def test_openapi_guides_code_search_and_reconciles_relative_routes_and_renamed_m
     assert not [item for item in model.diagnostics if item.code == "RECONCILE_REQUEST"]
     assert "RECONCILE_ENVELOPE" in codes
     assert create.request_entity_id is not None
+
+
+def test_openapi_only_response_models_and_parameters_survive_reconciliation(tmp_path: Path) -> None:
+    spec = tmp_path / "spec-only.yaml"
+    spec.write_text(
+        """
+openapi: 3.0.1
+info: {title: t, version: '1'}
+paths:
+  /ping:
+    get:
+      operationId: get-ping
+      parameters:
+        - $ref: '#/components/parameters/Country'
+      responses:
+        '200': {$ref: '#/components/responses/Ok'}
+        '400': {$ref: '#/components/responses/Err'}
+        '500': {$ref: '#/components/responses/Err'}
+components:
+  parameters:
+    Country: {name: Nxs-CountryCode, in: header, schema: {type: string}}
+  responses:
+    Ok:
+      description: ok
+      content:
+        application/json: {schema: {$ref: '#/components/schemas/PingResponse'}}
+    Err:
+      description: error
+      content:
+        application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}
+  schemas:
+    PingResponse: {type: object, properties: {status: {type: integer}}}
+    ErrorResponse:
+      type: object
+      properties:
+        errors: {type: array, items: {$ref: '#/components/schemas/ErrorModel'}}
+    ErrorModel: {type: object, properties: {code: {type: string}}}
+""",
+        encoding="utf-8",
+    )
+    repository = Path("fixtures/AzureFunctionsMediatorClaimsApi").resolve()
+    code = extract_roslyn(
+        repository / "AzureFunctionsMediatorClaimsApi.csproj", repository, "EU", "spec-only"
+    )
+
+    model = reconcile(code, discover_openapi(spec, "EU", "spec-only"))
+
+    names = {item.id: item.name for item in model.entities}
+    ping = next(item for item in model.operations if item.route == "/ping")
+    assert [(p.name, p.location.value) for p in ping.parameters] == [("Nxs-CountryCode", "header")]
+    assert {item.status_code: names.get(item.entity_id) for item in ping.responses} == {
+        200: "PingResponse",
+        400: "ErrorResponse",
+        500: "ErrorResponse",
+    }
+    assert {"ErrorModel", "PingResponse", "ErrorResponse"} <= set(names.values())

@@ -21,9 +21,7 @@ def scope_to_endpoint_contract_models(model: DiscoveryModel) -> DiscoveryModel:
     """Keep user-authored types used by endpoints or their reachable model graph."""
     result = model.model_copy(deep=True)
     candidates = {
-        entity.id: entity
-        for entity in result.entities
-        if _has_user_roslyn_source(result, entity.id)
+        entity.id: entity for entity in result.entities if _has_contract_source(result, entity.id)
     }
     retained_ids = {
         entity_id
@@ -36,6 +34,17 @@ def scope_to_endpoint_contract_models(model: DiscoveryModel) -> DiscoveryModel:
         if entity_id in candidates
     }
 
+    # Models an endpoint returns/accepts per the relationships (e.g. an OpenAPI response envelope
+    # that the code returns without its wrapper).
+    operation_ids = {operation.id for operation in result.operations}
+    for relationship in result.relationships:
+        if (
+            relationship.kind in {RelationshipKind.ACCEPTS, RelationshipKind.RETURNS}
+            and relationship.source_id in operation_ids
+            and relationship.target_id in candidates
+        ):
+            retained_ids.add(relationship.target_id)
+
     # Models named by the OpenAPI document that exist in code (evidence marker from Roslyn hints).
     retained_ids.update(
         item.subject_id
@@ -46,7 +55,6 @@ def scope_to_endpoint_contract_models(model: DiscoveryModel) -> DiscoveryModel:
     )
 
     # Models the endpoint's handler flow touches (mapper endpoints, handler/mapper/client models).
-    operation_ids = {operation.id for operation in result.operations}
     flow_edges: dict[str, set[str]] = {}
     for relationship in result.relationships:
         if (
@@ -196,11 +204,16 @@ def scope_to_endpoint_view_models(model: DiscoveryModel) -> DiscoveryModel:
     return scope_to_endpoint_contract_models(model)
 
 
-def _has_user_roslyn_source(model: DiscoveryModel, subject_id: str) -> bool:
+def _has_contract_source(model: DiscoveryModel, subject_id: str) -> bool:
+    """User-authored Roslyn source, or an OpenAPI schema (reachable ones are kept by callers)."""
     sources = {item.id: item for item in model.sources}
     for lineage in model.lineage:
         source = sources.get(lineage.source_id)
-        if lineage.subject_id != subject_id or source is None or source.kind != SourceKind.ROSLYN:
+        if lineage.subject_id != subject_id or source is None:
+            continue
+        if source.kind == SourceKind.OPENAPI:
+            return True
+        if source.kind != SourceKind.ROSLYN:
             continue
         path = PurePosixPath(lineage.path.replace("\\", "/"))
         lowered_parts = {part.lower() for part in path.parts}
