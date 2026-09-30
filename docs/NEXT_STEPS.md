@@ -1,11 +1,13 @@
 # Next Steps
 
-Last updated: 2026-09-29
+Last updated: 2026-09-30
 
 The first unchecked item is the recommended next action.
 
 ## Immediate
 
+- [ ] **NS-FIX-03:** Fix two pre-existing test isolation failures — `test_acord_alignment_renders_entity_domain_and_approval_workspaces` needs `monkeypatch` for `ALIGNMENT_AGENT_DATABASE`, and `test_phase_two_selects_the_matching_region_repository_and_discovery_artifact` needs `monkeypatch` for `CANONICAL_DATABASE`. Both fail because real project databases (`.alignments/alignment-agent.sqlite3` with existing checkpoints and `.canonical/canonical-models.sqlite3` with v1/v2/v3) leak into the tests.
+- [x] **NS-FIX-02:** Fix Domain column missing from Regional normalization review tab and approval state lost on page reload.
 - [x] **NS-FIX-01 / P2.6ae:** Clear the baseline defects found by running the application: the corrupted `Â·` separator in the delete-alignment dialog, the dialog closing on a full-script rerun, two Streamlit assertions reading the wrong AppTest widget collection, and the failing Ruff lint/format gates.
 - [x] **NS-UI-44 / P2.6ad:** Remove OpenAI API key and model settings from the front end and read `OPENAI_API_KEY` and `OPENAI_MODEL` from the ignored `.env` file only.
 - [x] **NS-ALIGN-03 / A3.1-A3.5:** Route alignment proposal generation through a dedicated LangGraph Alignment Agent with a proper package boundary, baseline-first/ACORD fallback, bounded retry, SQLite checkpoints and review drafts, and failed-node resume from the same saved evidence.

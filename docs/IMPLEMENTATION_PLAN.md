@@ -1,8 +1,17 @@
 # Canonical Model Generator - Implementation Plan
 
-Last updated: 2026-09-29
+Last updated: 2026-09-30
 Current release: Phase 2 API Analyzer Agent  
 Overall status: In progress
+
+## Plan amendment - Regional normalization review UI fixes (2026-09-30)
+
+Status: Complete.
+
+- [x] **FIX-02a** Add `Domain` column to the entity table in the Regional normalization review tab so reviewers have context when making normalization decisions. Source: `model_branch.get("domain", "Awaiting API Analyzer")`. Column is read-only (added to `disabled` list).
+- [x] **FIX-02b** Persist approved regional reviews to `.regional-reviews/{region}.json` via atomic write in `_save_regional_review()` and reload them on startup via `_load_regional_reviews()`, regenerating Excel and Mermaid artifacts from the saved JSON.
+
+Verified: 84 non-e2e tests pass (1 expected skip), 3 Streamlit flow tests pass, Ruff format clean, syntax OK via `py_compile`.
 
 ## Plan amendment - Baseline defect clearance (2026-09-29)
 
