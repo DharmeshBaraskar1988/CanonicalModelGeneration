@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import math
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -12,6 +15,11 @@ from canonical_model_generator.llm_audit import usage_token_counts, write_llm_ca
 
 LOCAL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 LOCAL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+# The local model is loaded only from this folder; nothing is fetched from Hugging Face at runtime.
+MODEL_DIR_ENV = "CMG_EMBEDDING_MODEL_DIR"
+DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[3] / ".models" / "all-MiniLM-L6-v2"
+MODEL_MARKER = "cmg-model.json"
+_MODEL_FILES = ["*.json", "*.txt", "model.safetensors", "1_Pooling/*"]
 OPENAI_MODELS = ("text-embedding-ada-002", "text-embedding-3-small", "text-embedding-3-large")
 
 
@@ -37,11 +45,48 @@ class Embedder(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
+def local_model_dir() -> Path:
+    return Path(os.environ.get(MODEL_DIR_ENV) or DEFAULT_MODEL_DIR)
+
+
+def download_local_model(target: Path | None = None) -> Path:
+    """One-time, explicit download of the pinned model. The only step that contacts Hugging Face."""
+    from huggingface_hub import snapshot_download
+
+    target = target or local_model_dir()
+    snapshot_download(
+        LOCAL_MODEL, revision=LOCAL_REVISION, local_dir=target, allow_patterns=_MODEL_FILES
+    )
+    marker = {"model": LOCAL_MODEL, "revision": LOCAL_REVISION}
+    (target / MODEL_MARKER).write_text(json.dumps(marker, indent=2), encoding="utf-8")
+    return target
+
+
 @lru_cache(maxsize=2)
 def _local_model(name: str, revision: str | None):
+    directory = local_model_dir()
+    try:
+        marker = json.loads((directory / MODEL_MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise RuntimeError(
+            f"Local embedding model not found in {directory}. Download it once with "
+            "`canonical-rag download-model` or set CMG_EMBEDDING_MODEL_DIR."
+        ) from None
+    if marker != {"model": name, "revision": revision}:
+        raise RuntimeError(
+            f"Local embedding model in {directory} is {marker.get('model')}@"
+            f"{marker.get('revision')}; expected {name}@{revision}. Re-run "
+            "`canonical-rag download-model`."
+        )
+    # Hard offline: no Hub lookups, update checks or telemetry while embedding source code.
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(name, revision=revision, device="cpu", trust_remote_code=False)
+    return SentenceTransformer(
+        str(directory), device="cpu", local_files_only=True, trust_remote_code=False
+    )
 
 
 class SentenceTransformerEmbedder:

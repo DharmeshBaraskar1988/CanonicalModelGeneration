@@ -15,6 +15,7 @@ from canonical_model_generator.repository_rag.embeddings import (
     LOCAL_MODEL,
     EmbeddingConfig,
     create_embedder,
+    download_local_model,
 )
 from canonical_model_generator.repository_rag.index import ChromaRepositoryIndex
 
@@ -39,8 +40,17 @@ def main(argv: list[str] | None = None) -> int:
     query.add_argument("--subject-id")
     query.add_argument("--limit", type=int, default=8)
     query.add_argument("--allow-source-sharing", action="store_true")
+    download = commands.add_parser("download-model")
+    download.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     load_dotenv()
+    if args.command == "download-model":
+        try:
+            print(download_local_model(args.output))
+            return 0
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     index = None
     try:
         if args.command == "index":

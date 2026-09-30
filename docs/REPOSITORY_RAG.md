@@ -35,7 +35,9 @@ establishes an execution path.
 In the **Repository RAG** tab, upload a repository or use the Discovery Agent's current repository.
 Choose a local Sentence Transformer or OpenAI embedding model, then build the index. The local
 MiniLM model is pinned to revision `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` and uses pooled
-token windows. OpenAI offers `text-embedding-ada-002`, `text-embedding-3-small` and
+token windows. It runs fully offline from `.models/all-MiniLM-L6-v2` (override with
+`CMG_EMBEDDING_MODEL_DIR`); download it once with `canonical-rag download-model`, which is the only
+step that contacts Hugging Face. OpenAI offers `text-embedding-ada-002`, `text-embedding-3-small` and
 `text-embedding-3-large`; it requires explicit acknowledgement because all included redacted
 chunks are sent to that provider during indexing. There is no hash-vector fallback in production.
 
